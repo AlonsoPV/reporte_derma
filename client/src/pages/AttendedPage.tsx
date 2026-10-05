@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { Badge } from '../components/Badge';
 import { money } from '../components/KpiGrid';
 import { todayISO } from '../lib/utils';
-import { PAYMENT_LABELS, ORIGIN_LABELS } from '@shared/constants';
+import { PAYMENT_LABELS, ORIGIN_LABELS, PAYMENT_METHODS, type PaymentMethod } from '@shared/constants';
 
 type Attendance = {
   id: string;
@@ -16,6 +16,7 @@ type Attendance = {
   paymentMethod: keyof typeof PAYMENT_LABELS;
   origin: keyof typeof ORIGIN_LABELS;
   phone?: string | null;
+  email?: string | null;
   notes?: string | null;
   doctor?: { name: string };
 };
@@ -29,6 +30,19 @@ export function AttendedPage() {
   const [doctors, setDoctors] = useState<Array<{ id: string; name: string }>>([]);
   const [rows, setRows] = useState<Attendance[]>([]);
   const [selected, setSelected] = useState<Attendance | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({
+    patientName: '',
+    phone: '',
+    email: '',
+    actualTime: '',
+    treatment: '',
+    amount: '',
+    paymentMethod: 'CASH' as PaymentMethod,
+    notes: '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (user?.role === 'ADMIN') {
@@ -47,6 +61,51 @@ export function AttendedPage() {
   useEffect(() => {
     load().catch(console.error);
   }, [from, to, doctorId]);
+
+  const openDetail = (r: Attendance, startEditing = false) => {
+    setSelected(r);
+    setEditing(startEditing);
+    setError('');
+    setForm({
+      patientName: r.patientName,
+      phone: r.phone || '',
+      email: r.email || '',
+      actualTime: r.actualTime,
+      treatment: r.treatment,
+      amount: String(r.amount),
+      paymentMethod: r.paymentMethod,
+      notes: r.notes || '',
+    });
+  };
+
+  const save = async () => {
+    if (!selected) return;
+    if (!form.patientName.trim() || !form.treatment.trim() || Number(form.amount) <= 0) {
+      setError('Nombre, tratamiento y monto son obligatorios');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await api.patch(`/api/attendances/${selected.id}`, {
+        patientName: form.patientName,
+        phone: form.phone,
+        email: form.email,
+        actualTime: form.actualTime,
+        treatment: form.treatment,
+        amount: Number(form.amount),
+        paymentMethod: form.paymentMethod,
+        notes: form.notes,
+      });
+      setSelected(null);
+      setEditing(false);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al guardar');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -108,7 +167,12 @@ export function AttendedPage() {
                 <td className="px-4 py-3">{PAYMENT_LABELS[r.paymentMethod]}</td>
                 {user?.role === 'ADMIN' && <td className="px-4 py-3">{r.doctor?.name}</td>}
                 <td className="px-4 py-3"><Badge status={r.origin === 'WALK_IN' ? 'RESCHEDULED' : 'ATTENDED'} label={ORIGIN_LABELS[r.origin]} /></td>
-                <td className="px-4 py-3"><button className="btn-ghost" onClick={() => setSelected(r)}>Detalle</button></td>
+                <td className="px-4 py-3">
+                  <div className="flex gap-1">
+                    <button className="btn-ghost" onClick={() => openDetail(r, false)}>Ver</button>
+                    <button className="btn-secondary" onClick={() => openDetail(r, true)}>Editar</button>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -117,17 +181,90 @@ export function AttendedPage() {
 
       {selected && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
-          <div className="card w-full max-w-lg p-6">
-            <h2 className="font-display text-2xl font-semibold">{selected.patientName}</h2>
-            <div className="mt-4 space-y-2 text-sm">
-              <div>Tratamiento: <strong>{selected.treatment}</strong></div>
-              <div>Monto: <strong>{money(Number(selected.amount))}</strong></div>
-              <div>Pago: {PAYMENT_LABELS[selected.paymentMethod]}</div>
-              <div>Origen: {ORIGIN_LABELS[selected.origin]}</div>
-              <div>Teléfono: {selected.phone || '—'}</div>
-              <div>Notas: {selected.notes || '—'}</div>
+          <div className="card max-h-[90vh] w-full max-w-lg overflow-y-auto p-6">
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="font-display text-2xl font-semibold">
+                {editing ? 'Editar atención' : selected.patientName}
+              </h2>
+              {!editing && (
+                <button className="btn-primary" onClick={() => setEditing(true)}>Editar</button>
+              )}
             </div>
-            <button className="btn-secondary mt-6 w-full" onClick={() => setSelected(null)}>Cerrar</button>
+
+            {!editing ? (
+              <div className="mt-4 space-y-2 text-sm">
+                <div>Tratamiento: <strong>{selected.treatment}</strong></div>
+                <div>Monto: <strong>{money(Number(selected.amount))}</strong></div>
+                <div>Pago: {PAYMENT_LABELS[selected.paymentMethod]}</div>
+                <div>Hora: {selected.actualTime}</div>
+                <div>Origen: {ORIGIN_LABELS[selected.origin]}</div>
+                <div>Teléfono: {selected.phone || '—'}</div>
+                <div>Correo: {selected.email || '—'}</div>
+                <div>Notas: {selected.notes || '—'}</div>
+              </div>
+            ) : (
+              <div className="mt-4 space-y-3">
+                <div>
+                  <label className="label">Paciente *</label>
+                  <input className="input" value={form.patientName} onChange={(e) => setForm({ ...form, patientName: e.target.value })} />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="label">Teléfono</label>
+                    <input className="input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="label">Hora *</label>
+                    <input className="input" type="time" value={form.actualTime} onChange={(e) => setForm({ ...form, actualTime: e.target.value })} />
+                  </div>
+                </div>
+                <div>
+                  <label className="label">Correo</label>
+                  <input className="input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+                </div>
+                <div>
+                  <label className="label">Tratamiento *</label>
+                  <input className="input" value={form.treatment} onChange={(e) => setForm({ ...form, treatment: e.target.value })} />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="label">Monto *</label>
+                    <input className="input" type="number" min="0.01" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="label">Forma de pago</label>
+                    <select className="input" value={form.paymentMethod} onChange={(e) => setForm({ ...form, paymentMethod: e.target.value as PaymentMethod })}>
+                      {PAYMENT_METHODS.map((m) => (
+                        <option key={m} value={m}>{PAYMENT_LABELS[m]}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="label">Observaciones</label>
+                  <textarea className="input min-h-[80px]" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+                </div>
+                {error && <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
+              </div>
+            )}
+
+            <div className="mt-6 flex gap-2">
+              <button
+                className="btn-secondary flex-1"
+                onClick={() => {
+                  setSelected(null);
+                  setEditing(false);
+                  setError('');
+                }}
+              >
+                Cerrar
+              </button>
+              {editing && (
+                <button className="btn-primary flex-1" disabled={saving} onClick={save}>
+                  {saving ? 'Guardando…' : 'Guardar cambios'}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
