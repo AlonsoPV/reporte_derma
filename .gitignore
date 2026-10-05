@@ -47,3 +47,16 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# DermaOps application data and generated files
+.env
+.env.local
+*.log
+pg.log
+uploads/*
+!uploads/imports/.gitkeep
+client/dist/
+.vite/
+coverage/
+*.xlsx
+!prisma/sample/*.xlsx

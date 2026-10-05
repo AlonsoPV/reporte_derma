@@ -1,0 +1,1 @@
+- [Vite/esbuild target compatibility](vite-esbuild-target.md) — use an ESNext target for both build and dependency optimization if esbuild rejects destructuring.

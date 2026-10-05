@@ -17,7 +17,7 @@ run = "pnpm --filter @workspace/reporte-derma run dev"
 [services.production]
 build = [ "pnpm", "--filter", "@workspace/reporte-derma", "run", "build" ]
 serve = "static"
-publicDir = "artifacts/reporte-derma/dist/public"
+publicDir = "client/dist"
 
 [[services.production.rewrites]]
 from = "/*"

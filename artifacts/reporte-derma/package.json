@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --config vite.config.ts --host 0.0.0.0",
-    "build": "vite build --config vite.config.ts",
-    "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "dev": "pnpm --dir ../.. run dev:client",
+    "build": "pnpm --dir ../.. run build:client",
+    "serve": "pnpm --dir ../.. run start",
+    "typecheck": "pnpm --dir ../.. exec tsc -p client/tsconfig.json --noEmit"
   },
   "devDependencies": {
     "@hookform/resolvers": "^3.10.0",
