@@ -1,0 +1,14 @@
+node_modules/
+dist/
+uploads/
+!uploads/imports/.gitkeep
+.env
+.env.local
+*.log
+pg.log
+.DS_Store
+client/dist/
+.vite/
+coverage/
+*.xlsx
+!prisma/sample/*.xlsx
