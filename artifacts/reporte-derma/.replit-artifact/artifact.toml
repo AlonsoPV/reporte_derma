@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "DermaOps — Control de clínica"
+description = "Aplicación web para administrar citas, atenciones, ingresos y cierres diarios de una clínica dermatológica."
+version = "1.0.0"
+id = "artifacts/reporte-derma"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22099
+
+[services.development]
+run = "pnpm --filter @workspace/reporte-derma run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/reporte-derma", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/reporte-derma/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22099"
+BASE_PATH = "/"
