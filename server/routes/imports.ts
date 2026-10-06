@@ -375,6 +375,15 @@ router.post('/confirm/:id', requireAuth, requireRole('ADMIN'), async (req, res) 
           createdCount++;
           if (sourceOp === 'CANCELLED') cancelledCount++;
         } else {
+          const closed = existing.doctorId
+            ? await prisma.dailyClosure.findUnique({
+                where: {
+                  doctorId_date: { doctorId: existing.doctorId, date: existing.appointmentDate },
+                },
+              })
+            : null;
+          if (closed?.status === 'CLOSED') continue;
+
           const keepAttended = existing.operationalStatus === 'ATTENDED';
           const nextStatus = keepAttended
             ? existing.operationalStatus

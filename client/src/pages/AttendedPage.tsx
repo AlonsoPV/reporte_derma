@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { Badge } from '../components/Badge';
 import { money } from '../components/KpiGrid';
+import { DateQuickFilters } from '../components/DateQuickFilters';
 import { todayISO } from '../lib/utils';
 import { PAYMENT_LABELS, ORIGIN_LABELS, PAYMENT_METHODS, type PaymentMethod } from '@shared/constants';
 
@@ -19,6 +20,7 @@ type Attendance = {
   email?: string | null;
   notes?: string | null;
   doctor?: { name: string };
+  isDayClosed?: boolean;
 };
 
 export function AttendedPage() {
@@ -53,7 +55,7 @@ export function AttendedPage() {
   const load = async () => {
     const params = new URLSearchParams({ from, to });
     if (q) params.set('q', q);
-    if (doctorId) params.set('doctorId', doctorId);
+    if (user?.role === 'ADMIN' && doctorId) params.set('doctorId', doctorId);
     const data = await api.get<{ attendances: Attendance[] }>(`/api/attendances?${params}`);
     setRows(data.attendances);
   };
@@ -64,7 +66,7 @@ export function AttendedPage() {
 
   const openDetail = (r: Attendance, startEditing = false) => {
     setSelected(r);
-    setEditing(startEditing);
+    setEditing(startEditing && !r.isDayClosed);
     setError('');
     setForm({
       patientName: r.patientName,
@@ -114,30 +116,40 @@ export function AttendedPage() {
         <p className="text-slate-600">Historial de atenciones con origen agendado o sin cita</p>
       </div>
 
-      <div className="card grid gap-3 p-4 md:grid-cols-5">
-        <div>
-          <label className="label">Desde</label>
-          <input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-        </div>
-        <div>
-          <label className="label">Hasta</label>
-          <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-        </div>
-        {user?.role === 'ADMIN' && (
+      <div className="card space-y-4 p-4">
+        <DateQuickFilters
+          from={from}
+          to={to}
+          onChange={({ from: f, to: t }) => {
+            setFrom(f);
+            setTo(t);
+          }}
+        />
+        <div className="grid gap-3 md:grid-cols-5">
           <div>
-            <label className="label">Doctor</label>
-            <select className="input" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
-              <option value="">Todos</option>
-              {doctors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select>
+            <label className="label">Desde</label>
+            <input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
-        )}
-        <div className={user?.role === 'ADMIN' ? '' : 'md:col-span-2'}>
-          <label className="label">Buscar</label>
-          <input className="input" placeholder="Nombre, teléfono, tratamiento" value={q} onChange={(e) => setQ(e.target.value)} />
-        </div>
-        <div className="flex items-end">
-          <button className="btn-primary w-full" onClick={() => load()}>Buscar</button>
+          <div>
+            <label className="label">Hasta</label>
+            <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          </div>
+          {user?.role === 'ADMIN' && (
+            <div>
+              <label className="label">Doctor</label>
+              <select className="input" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
+                <option value="">Todos</option>
+                {doctors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            </div>
+          )}
+          <div className={user?.role === 'ADMIN' ? '' : 'md:col-span-2'}>
+            <label className="label">Buscar</label>
+            <input className="input" placeholder="Nombre, teléfono, tratamiento" value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
+          <div className="flex items-end">
+            <button className="btn-primary w-full" onClick={() => load()}>Buscar</button>
+          </div>
         </div>
       </div>
 
@@ -170,7 +182,11 @@ export function AttendedPage() {
                 <td className="px-4 py-3">
                   <div className="flex gap-1">
                     <button className="btn-ghost" onClick={() => openDetail(r, false)}>Ver</button>
-                    <button className="btn-secondary" onClick={() => openDetail(r, true)}>Editar</button>
+                    {r.isDayClosed ? (
+                      <span className="self-center text-xs font-semibold text-brand-700">Cerrado</span>
+                    ) : (
+                      <button className="btn-secondary" onClick={() => openDetail(r, true)}>Editar</button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -186,7 +202,7 @@ export function AttendedPage() {
               <h2 className="font-display text-2xl font-semibold">
                 {editing ? 'Editar atención' : selected.patientName}
               </h2>
-              {!editing && (
+              {!editing && !selected.isDayClosed && (
                 <button className="btn-primary" onClick={() => setEditing(true)}>Editar</button>
               )}
             </div>

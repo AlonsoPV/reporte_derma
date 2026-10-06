@@ -1,10 +1,20 @@
 import { z } from 'zod';
 import { NO_SHOW_REASONS, PAYMENT_METHODS } from './constants';
 
-export const loginSchema = z.object({
-  email: z.string().email('Correo inválido'),
-  password: z.string().min(1, 'Contraseña requerida'),
-});
+export const loginSchema = z
+  .object({
+    email: z.string().optional(),
+    doctorId: z.string().optional(),
+    password: z.string().min(1, 'Contraseña requerida'),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.doctorId && !data.email) {
+      ctx.addIssue({ code: 'custom', message: 'Selecciona tu cuenta' });
+    }
+    if (data.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) {
+      ctx.addIssue({ code: 'custom', message: 'Correo inválido' });
+    }
+  });
 
 export const attendSchema = z.object({
   appointmentId: z.string().min(1),

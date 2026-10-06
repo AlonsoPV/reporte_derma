@@ -1,49 +1,71 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { Badge } from '../components/Badge';
-import { todayISO } from '../lib/utils';
+import { DateQuickFilters } from '../components/DateQuickFilters';
+import { AttendModal } from '../components/AttendModal';
+import { WalkInModal } from '../components/WalkInModal';
+import { CloseDayModal } from '../components/CloseDayModal';
+import { money } from '../components/KpiGrid';
+import { formatDisplayDate, todayISO } from '../lib/utils';
 import { useAuth } from '../auth/AuthContext';
-import { STATUS_LABELS, type OperationalStatus } from '@shared/constants';
+import { PAYMENT_LABELS, ORIGIN_LABELS } from '@shared/constants';
 
 type Appointment = {
   id: string;
-  appointmentDate: string;
   startTime: string;
-  endTime?: string | null;
   patientName: string;
   phone?: string | null;
   email?: string | null;
-  operationalStatus: string;
-  attendanceConfirmation?: string | null;
-  externalAppointmentId: string;
+  birthDate?: string | null;
   notes?: string | null;
+  sourceStatus?: string | null;
+  attendanceConfirmation?: string | null;
+  operationalStatus: string;
   doctorId?: string | null;
   doctor?: { name: string } | null;
+  externalAppointmentId?: string;
+};
+
+type Attendance = {
+  id: string;
+  actualTime: string;
+  patientName: string;
+  treatment: string;
+  amount: number | string;
+  paymentMethod: keyof typeof PAYMENT_LABELS;
+  origin: keyof typeof ORIGIN_LABELS;
+  notes?: string | null;
+  doctor?: { name: string };
+};
+
+type DayData = {
+  date: string;
+  appointments: Appointment[];
+  attendances: Attendance[];
+  isClosed: boolean;
+  closedDoctorIds?: string[];
 };
 
 export function AgendaPage() {
   const { user } = useAuth();
   const [params] = useSearchParams();
+  const isAdmin = user?.role === 'ADMIN';
   const [date, setDate] = useState(params.get('date') || todayISO());
-  const [doctorId, setDoctorId] = useState(params.get('doctorId') || '');
-  const [status, setStatus] = useState('');
+  const [doctorId, setDoctorId] = useState(isAdmin ? params.get('doctorId') || '' : '');
   const [q, setQ] = useState('');
   const [doctors, setDoctors] = useState<Array<{ id: string; name: string }>>([]);
-  const [rows, setRows] = useState<Appointment[]>([]);
-  const [selected, setSelected] = useState<Appointment | null>(null);
-  const [form, setForm] = useState({
-    patientName: '',
-    phone: '',
-    email: '',
-    startTime: '',
-    notes: '',
-    attendanceConfirmation: '',
-    operationalStatus: 'PENDING',
-    doctorId: '',
-  });
-  const [saving, setSaving] = useState(false);
+  const [data, setData] = useState<DayData | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [selected, setSelected] = useState<Appointment | null>(null);
+  const [walkInOpen, setWalkInOpen] = useState(false);
+  const [closeOpen, setCloseOpen] = useState(false);
+
+  const isToday = date === todayISO();
+  const closeDoctorId = user?.role === 'ADMIN' ? doctorId : user?.doctorId || '';
+  const canClose = Boolean(closeDoctorId);
+  const dayLocked = Boolean(data?.isClosed);
 
   useEffect(() => {
     if (user?.role === 'ADMIN') {
@@ -52,197 +74,275 @@ export function AgendaPage() {
   }, [user?.role]);
 
   const load = async () => {
-    const qs = new URLSearchParams();
-    if (date) qs.set('date', date);
-    if (doctorId) qs.set('doctorId', doctorId);
-    if (status) qs.set('status', status);
-    if (q) qs.set('q', q);
-    const data = await api.get<{ appointments: Appointment[] }>(`/api/appointments?${qs}`);
-    setRows(data.appointments);
+    setLoading(true);
+    setError('');
+    try {
+      const qs = new URLSearchParams({ date });
+      if (user?.role === 'ADMIN' && doctorId) qs.set('doctorId', doctorId);
+      const res = await api.get<DayData>(`/api/day?${qs}`);
+      setData(res);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al cargar');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     load().catch(console.error);
-  }, [date, doctorId, status]);
+  }, [date, doctorId]);
 
-  const openEdit = (r: Appointment) => {
-    setSelected(r);
-    setError('');
-    setForm({
-      patientName: r.patientName,
-      phone: r.phone || '',
-      email: r.email || '',
-      startTime: r.startTime,
-      notes: r.notes || '',
-      attendanceConfirmation: r.attendanceConfirmation || '',
-      operationalStatus: r.operationalStatus,
-      doctorId: r.doctorId || '',
+  const matchesQuery = (value: string | null | undefined) => {
+    if (!q.trim()) return true;
+    return (value || '').toLowerCase().includes(q.trim().toLowerCase());
+  };
+
+  const scheduled = useMemo(() => {
+    return (data?.appointments || []).filter((a) => {
+      if (a.operationalStatus === 'ATTENDED') return false;
+      return matchesQuery(a.patientName) || matchesQuery(a.phone) || matchesQuery(a.externalAppointmentId);
     });
-  };
+  }, [data, q]);
 
-  const save = async () => {
-    if (!selected) return;
-    if (!form.patientName.trim() || !form.startTime) {
-      setError('Nombre y hora son obligatorios');
-      return;
-    }
-    setSaving(true);
-    setError('');
-    try {
-      await api.patch(`/api/appointments/${selected.id}`, {
-        patientName: form.patientName,
-        phone: form.phone,
-        email: form.email,
-        startTime: form.startTime,
-        notes: form.notes,
-        attendanceConfirmation: form.attendanceConfirmation,
-        operationalStatus: form.operationalStatus,
-        doctorId: user?.role === 'ADMIN' ? form.doctorId || null : undefined,
-      });
-      setSelected(null);
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al guardar');
-    } finally {
-      setSaving(false);
-    }
-  };
+  const attended = useMemo(() => {
+    return (data?.attendances || []).filter(
+      (a) => matchesQuery(a.patientName) || matchesQuery(a.treatment)
+    );
+  }, [data, q]);
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-3xl font-semibold">Agenda</h1>
-        <p className="text-slate-600">Citas programadas con estado operativo interno</p>
+        <h1 className="font-display text-3xl font-semibold">
+          {isToday ? 'Tablero para el día de hoy' : 'Agenda'}
+        </h1>
+        <p className="capitalize text-slate-600">
+          {user?.role !== 'ADMIN' && user?.name ? `${user.name} · ` : ''}
+          {formatDisplayDate(date)}
+        </p>
       </div>
 
-      <div className="card grid gap-3 p-4 md:grid-cols-5">
-        <div>
-          <label className="label">Fecha</label>
-          <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        </div>
-        {user?.role === 'ADMIN' && (
+      <div className="card space-y-4 p-4">
+        <DateQuickFilters mode="single" date={date} onChange={setDate} />
+        <div className="grid gap-3 md:grid-cols-4">
           <div>
-            <label className="label">Doctor</label>
-            <select className="input" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
-              <option value="">Todos</option>
-              {doctors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select>
+            <label className="label">Fecha</label>
+            <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
-        )}
-        <div>
-          <label className="label">Estado</label>
-          <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="">Todos</option>
-            <option value="PENDING">Pendiente</option>
-            <option value="ATTENDED">Atendido</option>
-            <option value="NO_SHOW">No atendido</option>
-            <option value="CANCELLED">Cancelado</option>
-            <option value="RESCHEDULED">Reagendado</option>
-          </select>
-        </div>
-        <div>
-          <label className="label">Buscar</label>
-          <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nombre, teléfono, ID cita" />
-        </div>
-        <div className="flex items-end">
-          <button className="btn-primary w-full" onClick={() => load()}>Filtrar</button>
+          {user?.role === 'ADMIN' && (
+            <div>
+              <label className="label">Doctor</label>
+              <select className="input" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
+                <option value="">Todos</option>
+                {doctors.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className={user?.role === 'ADMIN' ? 'md:col-span-2' : 'md:col-span-3'}>
+            <label className="label">Buscar</label>
+            <input
+              className="input"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Nombre, teléfono, ID cita"
+            />
+          </div>
         </div>
       </div>
 
-      <div className="card overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="bg-slate-50 text-left text-slate-500">
-            <tr>
-              <th className="px-4 py-3">Hora</th>
-              <th className="px-4 py-3">Paciente</th>
-              <th className="px-4 py-3">Teléfono</th>
-              {user?.role === 'ADMIN' && <th className="px-4 py-3">Doctor</th>}
-              <th className="px-4 py-3">Estado</th>
-              <th className="px-4 py-3">Asistencia</th>
-              <th className="px-4 py-3">ID cita</th>
-              <th className="px-4 py-3"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} className="border-t border-slate-100">
-                <td className="px-4 py-3 font-medium">{r.startTime}</td>
-                <td className="px-4 py-3">{r.patientName}</td>
-                <td className="px-4 py-3">{r.phone || '—'}</td>
-                {user?.role === 'ADMIN' && <td className="px-4 py-3">{r.doctor?.name || 'Sin mapear'}</td>}
-                <td className="px-4 py-3"><Badge status={r.operationalStatus} /></td>
-                <td className="px-4 py-3">{r.attendanceConfirmation || '—'}</td>
-                <td className="px-4 py-3 font-mono text-xs">{r.externalAppointmentId}</td>
-                <td className="px-4 py-3">
-                  <button className="btn-secondary" onClick={() => openEdit(r)}>Editar</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {data?.isClosed && (
+        <div className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-brand-900">
+          <strong>Día cerrado.</strong> No se permiten más cambios. Un administrador debe reabrir el día para editar.
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          className="btn-primary"
+          disabled={dayLocked}
+          onClick={() => setWalkInOpen(true)}
+        >
+          + Paciente nuevo
+        </button>
+        <button
+          className="btn-danger"
+          disabled={!canClose || dayLocked}
+          title={!canClose ? 'Selecciona un doctor para cerrar el día' : undefined}
+          onClick={() => setCloseOpen(true)}
+        >
+          {dayLocked ? 'Día cerrado' : 'Cerrar día'}
+        </button>
+        {user?.role === 'ADMIN' && !doctorId && (
+          <span className="self-center text-sm text-slate-500">Selecciona un doctor para cerrar su día</span>
+        )}
       </div>
+
+      {error && <div className="rounded-xl bg-rose-50 px-4 py-3 text-rose-700">{error}</div>}
+      {loading && <div className="text-slate-500">Cargando tablero…</div>}
+
+      <section className="card overflow-hidden">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <div>
+            <h2 className="text-lg font-semibold">Agendados</h2>
+            <p className="text-sm text-slate-500">Selecciona un paciente, captura procedimiento, notas y monto</p>
+          </div>
+          <span className="rounded-full bg-amber-50 px-3 py-1 text-sm font-semibold text-amber-800">
+            {scheduled.length}
+          </span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50 text-left text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Hora</th>
+                <th className="px-4 py-3">Paciente</th>
+                <th className="px-4 py-3">Teléfono</th>
+                {user?.role === 'ADMIN' && <th className="px-4 py-3">Doctor</th>}
+                <th className="px-4 py-3">Estado</th>
+                <th className="px-4 py-3">Asistencia</th>
+                <th className="px-4 py-3">Notas</th>
+                <th className="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {scheduled.map((r) => {
+                const locked = data?.closedDoctorIds?.includes(r.doctorId || '') || data?.isClosed;
+                const canAttend = r.operationalStatus === 'PENDING' && !locked;
+                return (
+                <tr
+                  key={r.id}
+                  className={canAttend ? 'cursor-pointer border-t border-slate-100 hover:bg-brand-50/60' : 'border-t border-slate-100'}
+                  onClick={() => {
+                    if (canAttend) setSelected(r);
+                  }}
+                >
+                  <td className="px-4 py-3 font-semibold tabular-nums text-brand-800">{r.startTime}</td>
+                  <td className="px-4 py-3 font-medium">{r.patientName}</td>
+                  <td className="px-4 py-3">{r.phone || '—'}</td>
+                  {user?.role === 'ADMIN' && <td className="px-4 py-3">{r.doctor?.name || 'Sin mapear'}</td>}
+                  <td className="px-4 py-3"><Badge status={r.operationalStatus} /></td>
+                  <td className="px-4 py-3">{r.attendanceConfirmation || '—'}</td>
+                  <td className="max-w-[220px] truncate px-4 py-3 text-slate-500">{r.notes || '—'}</td>
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    {r.operationalStatus === 'PENDING' ? (
+                      locked ? (
+                        <span className="text-xs font-semibold text-brand-700">Cerrado</span>
+                      ) : (
+                        <button className="btn-primary" onClick={() => setSelected(r)}>
+                          Seleccionar
+                        </button>
+                      )
+                    ) : (
+                      <span className="text-slate-400">—</span>
+                    )}
+                  </td>
+                </tr>
+                );
+              })}
+              {!loading && scheduled.length === 0 && (
+                <tr>
+                  <td className="px-4 py-10 text-center text-slate-500" colSpan={8}>
+                    No hay pacientes agendados pendientes para este día.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-2xl border-2 border-emerald-200 bg-white shadow-soft">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-emerald-100 bg-emerald-50/70 px-5 py-4">
+          <div>
+            <h2 className="text-lg font-semibold text-emerald-900">Atendidos</h2>
+            <p className="text-sm text-emerald-800/80">Procedimiento, notas y monto cobrado del día</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-emerald-800">
+              {attended.length}
+            </span>
+            <button
+              className="btn-primary"
+              disabled={dayLocked}
+              onClick={() => setWalkInOpen(true)}
+            >
+              + Paciente nuevo
+            </button>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50 text-left text-slate-500">
+              <tr>
+                <th className="px-4 py-3">Hora</th>
+                <th className="px-4 py-3">Paciente</th>
+                <th className="px-4 py-3">Procedimiento</th>
+                <th className="px-4 py-3">Monto</th>
+                <th className="px-4 py-3">Pago</th>
+                {user?.role === 'ADMIN' && <th className="px-4 py-3">Doctor</th>}
+                <th className="px-4 py-3">Origen</th>
+                <th className="px-4 py-3">Notas</th>
+              </tr>
+            </thead>
+            <tbody>
+              {attended.map((a) => (
+                <tr key={a.id} className="border-t border-slate-100">
+                  <td className="px-4 py-3 font-medium">{a.actualTime}</td>
+                  <td className="px-4 py-3 font-medium">{a.patientName}</td>
+                  <td className="px-4 py-3">{a.treatment}</td>
+                  <td className="px-4 py-3">{money(Number(a.amount))}</td>
+                  <td className="px-4 py-3">{PAYMENT_LABELS[a.paymentMethod]}</td>
+                  {user?.role === 'ADMIN' && <td className="px-4 py-3">{a.doctor?.name}</td>}
+                  <td className="px-4 py-3">{ORIGIN_LABELS[a.origin]}</td>
+                  <td className="max-w-[220px] truncate px-4 py-3 text-slate-500">{a.notes || '—'}</td>
+                </tr>
+              ))}
+              {!loading && attended.length === 0 && (
+                <tr>
+                  <td className="px-4 py-12 text-center text-emerald-800/70" colSpan={8}>
+                    Aún no hay pacientes atendidos.
+                    <div className="mt-1 text-sm">Selecciona uno de Agendados o agrega un paciente nuevo.</div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
-          <div className="card max-h-[90vh] w-full max-w-lg overflow-y-auto p-6">
-            <h2 className="font-display text-2xl font-semibold">Editar cita</h2>
-            <p className="mt-1 text-sm text-slate-500">ID: {selected.externalAppointmentId}</p>
-            <div className="mt-4 space-y-3">
-              <div>
-                <label className="label">Paciente *</label>
-                <input className="input" value={form.patientName} onChange={(e) => setForm({ ...form, patientName: e.target.value })} />
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="label">Teléfono</label>
-                  <input className="input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-                </div>
-                <div>
-                  <label className="label">Hora *</label>
-                  <input className="input" type="time" value={form.startTime} onChange={(e) => setForm({ ...form, startTime: e.target.value })} />
-                </div>
-              </div>
-              <div>
-                <label className="label">Correo</label>
-                <input className="input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-              </div>
-              {user?.role === 'ADMIN' && (
-                <div>
-                  <label className="label">Doctor</label>
-                  <select className="input" value={form.doctorId} onChange={(e) => setForm({ ...form, doctorId: e.target.value })}>
-                    <option value="">Sin asignar</option>
-                    {doctors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                  </select>
-                </div>
-              )}
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div>
-                  <label className="label">Estado operativo</label>
-                  <select className="input" value={form.operationalStatus} onChange={(e) => setForm({ ...form, operationalStatus: e.target.value })}>
-                    {(Object.keys(STATUS_LABELS) as OperationalStatus[]).map((s) => (
-                      <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Asistencia Huli</label>
-                  <input className="input" value={form.attendanceConfirmation} onChange={(e) => setForm({ ...form, attendanceConfirmation: e.target.value })} />
-                </div>
-              </div>
-              <div>
-                <label className="label">Notas</label>
-                <textarea className="input min-h-[80px]" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-              </div>
-              {error && <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
-            </div>
-            <div className="mt-6 flex gap-2">
-              <button className="btn-secondary flex-1" onClick={() => setSelected(null)}>Cancelar</button>
-              <button className="btn-primary flex-1" disabled={saving} onClick={save}>
-                {saving ? 'Guardando…' : 'Guardar cambios'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <AttendModal
+          appointment={selected}
+          onClose={() => setSelected(null)}
+          onSaved={async () => {
+            setSelected(null);
+            await load();
+          }}
+        />
+      )}
+      {walkInOpen && (
+        <WalkInModal
+          date={date}
+          initialDoctorId={doctorId || undefined}
+          onClose={() => setWalkInOpen(false)}
+          onSaved={async () => {
+            setWalkInOpen(false);
+            await load();
+          }}
+        />
+      )}
+      {closeOpen && (
+        <CloseDayModal
+          date={date}
+          doctorId={closeDoctorId}
+          onClose={() => setCloseOpen(false)}
+          onClosed={async () => {
+            setCloseOpen(false);
+            await load();
+          }}
+        />
       )}
     </div>
   );

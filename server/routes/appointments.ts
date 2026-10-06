@@ -3,6 +3,7 @@ import { prisma } from '../db';
 import { requireAuth, getUser } from '../middleware/auth';
 import {
   assertDoctorAccess,
+  assertDayOpen,
   doctorScope,
   formatDateOnly,
   parseDateOnly,
@@ -35,7 +36,7 @@ router.get('/day', requireAuth, async (req, res) => {
     const whereAtt: Record<string, unknown> = { attendanceDate: date };
     if (doctorId) whereAtt.doctorId = doctorId;
 
-    const [appointments, attendances, closure] = await Promise.all([
+    const [appointments, attendances, closures] = await Promise.all([
       prisma.appointment.findMany({
         where: whereAppt,
         include: { doctor: true, attendance: true },
@@ -46,12 +47,17 @@ router.get('/day', requireAuth, async (req, res) => {
         include: { doctor: true, appointment: true, createdBy: { select: { id: true, name: true } } },
         orderBy: { actualTime: 'asc' },
       }),
-      doctorId
-        ? prisma.dailyClosure.findUnique({
-            where: { doctorId_date: { doctorId, date } },
-          })
-        : null,
+      prisma.dailyClosure.findMany({
+        where: {
+          date,
+          status: 'CLOSED',
+          ...(doctorId ? { doctorId } : {}),
+        },
+      }),
     ]);
+
+    const closedDoctorIds = closures.map((c) => c.doctorId);
+    const closure = doctorId ? closures.find((c) => c.doctorId === doctorId) || null : null;
 
     const scheduled = appointments.length;
     const pending = appointments.filter((a) => a.operationalStatus === 'PENDING').length;
@@ -75,7 +81,8 @@ router.get('/day', requireAuth, async (req, res) => {
       appointments,
       attendances,
       closure,
-      isClosed: closure?.status === 'CLOSED',
+      closedDoctorIds,
+      isClosed: doctorId ? closedDoctorIds.includes(doctorId) : false,
     });
   } catch (e) {
     console.error(e);
@@ -172,17 +179,7 @@ router.post('/attend', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Ya existe un registro de atención para esta cita' });
     }
 
-    const closed = await prisma.dailyClosure.findUnique({
-      where: {
-        doctorId_date: {
-          doctorId: appointment.doctorId,
-          date: appointment.appointmentDate,
-        },
-      },
-    });
-    if (closed?.status === 'CLOSED' && user.role !== 'ADMIN') {
-      return res.status(400).json({ error: 'El día está cerrado. Solicite reapertura al administrador.' });
-    }
+    await assertDayOpen(appointment.doctorId, appointment.appointmentDate);
 
     const result = await prisma.$transaction(async (tx) => {
       const attendance = await tx.attendance.create({
@@ -262,12 +259,7 @@ router.post('/walk-in', requireAuth, async (req, res) => {
     const dateStr = data.attendanceDate || todayInMexico();
     const date = parseDateOnly(dateStr);
 
-    const closed = await prisma.dailyClosure.findUnique({
-      where: { doctorId_date: { doctorId, date } },
-    });
-    if (closed?.status === 'CLOSED' && user.role !== 'ADMIN') {
-      return res.status(400).json({ error: 'El día está cerrado. Solicite reapertura al administrador.' });
-    }
+    await assertDayOpen(doctorId, date);
 
     const attendance = await prisma.attendance.create({
       data: {
@@ -322,16 +314,7 @@ router.post('/classify', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'No se puede clasificar una cita ya atendida' });
     }
 
-    if (appointment.doctorId) {
-      const closed = await prisma.dailyClosure.findUnique({
-        where: {
-          doctorId_date: { doctorId: appointment.doctorId, date: appointment.appointmentDate },
-        },
-      });
-      if (closed?.status === 'CLOSED' && user.role !== 'ADMIN') {
-        return res.status(400).json({ error: 'El día está cerrado' });
-      }
-    }
+    await assertDayOpen(appointment.doctorId, appointment.appointmentDate);
 
     const updated = await prisma.appointment.update({
       where: { id: appointment.id },
@@ -401,7 +384,24 @@ router.get('/attendances', requireAuth, async (req, res) => {
       orderBy: [{ attendanceDate: 'desc' }, { actualTime: 'asc' }],
       take: 500,
     });
-    res.json({ attendances });
+
+    const closed = attendances.length
+      ? await prisma.dailyClosure.findMany({
+          where: {
+            status: 'CLOSED',
+            OR: attendances.map((a) => ({ doctorId: a.doctorId, date: a.attendanceDate })),
+          },
+          select: { doctorId: true, date: true },
+        })
+      : [];
+    const closedSet = new Set(closed.map((c) => `${c.doctorId}|${c.date.toISOString().slice(0, 10)}`));
+
+    res.json({
+      attendances: attendances.map((a) => ({
+        ...a,
+        isDayClosed: closedSet.has(`${a.doctorId}|${a.attendanceDate.toISOString().slice(0, 10)}`),
+      })),
+    });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Error al listar atenciones' });
@@ -415,14 +415,7 @@ router.patch('/attendances/:id', requireAuth, async (req, res) => {
     if (!existing) return res.status(404).json({ error: 'Atención no encontrada' });
     assertDoctorAccess(user, existing.doctorId);
 
-    const closed = await prisma.dailyClosure.findUnique({
-      where: {
-        doctorId_date: { doctorId: existing.doctorId, date: existing.attendanceDate },
-      },
-    });
-    if (closed?.status === 'CLOSED' && user.role !== 'ADMIN') {
-      return res.status(400).json({ error: 'El día está cerrado. Solicite reapertura al administrador.' });
-    }
+    await assertDayOpen(existing.doctorId, existing.attendanceDate);
 
     const { treatment, amount, paymentMethod, notes, patientName, phone, email, actualTime } = req.body;
 
@@ -488,16 +481,7 @@ router.patch('/appointments/:id', requireAuth, async (req, res) => {
     if (!existing) return res.status(404).json({ error: 'Cita no encontrada' });
     assertDoctorAccess(user, existing.doctorId);
 
-    if (existing.doctorId) {
-      const closed = await prisma.dailyClosure.findUnique({
-        where: {
-          doctorId_date: { doctorId: existing.doctorId, date: existing.appointmentDate },
-        },
-      });
-      if (closed?.status === 'CLOSED' && user.role !== 'ADMIN') {
-        return res.status(400).json({ error: 'El día está cerrado. Solicite reapertura al administrador.' });
-      }
-    }
+    await assertDayOpen(existing.doctorId, existing.appointmentDate);
 
     const {
       patientName,

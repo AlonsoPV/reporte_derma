@@ -86,7 +86,10 @@ export function TodayPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl font-semibold">Hoy</h1>
-          <p className="text-slate-600 capitalize">{formatDisplayDate(date)}</p>
+          <p className="text-slate-600 capitalize">
+            {user?.role !== 'ADMIN' && user?.name ? `${user.name} · ` : ''}
+            {formatDisplayDate(date)}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button className="btn-secondary" onClick={() => setDate((d) => shiftDate(d, -1))}>
@@ -114,13 +117,19 @@ export function TodayPage() {
       )}
 
       <div className="flex flex-wrap gap-2">
-        <button className="btn-primary" onClick={() => setWalkInOpen(true)} disabled={data?.isClosed && user?.role !== 'ADMIN'}>
+        <button className="btn-primary" onClick={() => setWalkInOpen(true)} disabled={data?.isClosed}>
           + Paciente sin cita
         </button>
         <button className="btn-danger" onClick={() => setCloseOpen(true)} disabled={data?.isClosed}>
           {data?.isClosed ? 'Día cerrado' : 'Cerrar día'}
         </button>
       </div>
+
+      {data?.isClosed && (
+        <div className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-brand-900">
+          <strong>Día cerrado.</strong> No se permiten más cambios. Un administrador debe reabrir el día para editar.
+        </div>
+      )}
 
       {error && <div className="rounded-xl bg-rose-50 px-4 py-3 text-rose-700">{error}</div>}
       {loading && <div className="text-slate-500">Cargando agenda…</div>}
@@ -154,7 +163,7 @@ export function TodayPage() {
                 {appt.operationalStatus === 'PENDING' ? (
                   <button
                     className="btn-primary"
-                    disabled={data?.isClosed && user?.role !== 'ADMIN'}
+                    disabled={data?.isClosed}
                     onClick={() => setSelected(appt)}
                   >
                     Atender

@@ -4,8 +4,29 @@ import { prisma } from '../db';
 import { loginSchema } from '../../shared/schemas';
 import { requireAuth, getUser } from '../middleware/auth';
 import { writeAudit } from '../utils';
+import type { SessionUser } from '../../shared/types';
 
 const router = Router();
+
+router.get('/doctors', async (_req, res) => {
+  try {
+    const doctors = await prisma.doctor.findMany({
+      where: {
+        active: true,
+        user: { is: { status: 'ACTIVE', role: 'DOCTOR' } },
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+    res.json({ doctors });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Error al cargar médicos' });
+  }
+});
 
 router.post('/login', async (req, res) => {
   try {
@@ -14,8 +35,19 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos' });
     }
 
-    const { email, password } = parsed.data;
-    const user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    const { email, doctorId, password } = parsed.data;
+    const user = doctorId
+      ? await prisma.user.findFirst({
+          where: {
+            doctorId,
+            role: 'DOCTOR',
+            status: 'ACTIVE',
+          },
+        })
+      : await prisma.user.findUnique({
+          where: { email: email!.toLowerCase() },
+        });
+
     if (!user || user.status !== 'ACTIVE') {
       return res.status(401).json({ error: 'Credenciales incorrectas' });
     }
@@ -25,13 +57,18 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Credenciales incorrectas' });
     }
 
-    req.session.user = {
+    if (user.role === 'DOCTOR' && !user.doctorId) {
+      return res.status(403).json({ error: 'Esta cuenta no tiene un médico asociado' });
+    }
+
+    const sessionUser: SessionUser = {
       id: user.id,
       name: user.name,
       email: user.email,
       role: user.role,
       doctorId: user.doctorId,
     };
+    req.session.user = sessionUser;
 
     await writeAudit({
       userId: user.id,
@@ -40,7 +77,7 @@ router.post('/login', async (req, res) => {
       entityId: user.id,
     });
 
-    return res.json({ user: req.session.user });
+    return res.json({ user: sessionUser });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ error: 'Error al iniciar sesión' });
@@ -56,7 +93,7 @@ router.post('/logout', requireAuth, async (req, res) => {
     entityId: user.id,
   });
   req.session.destroy(() => {
-    res.clearCookie('connect.sid');
+    res.clearCookie('dermaops.sid');
     res.json({ ok: true });
   });
 });
