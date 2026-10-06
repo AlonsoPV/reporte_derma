@@ -42,13 +42,20 @@ router.post('/login', async (req, res) => {
             doctorId,
             role: 'DOCTOR',
             status: 'ACTIVE',
+            doctor: { is: { active: true } },
           },
+          include: { doctor: true },
         })
       : await prisma.user.findUnique({
           where: { email: email!.toLowerCase() },
+          include: { doctor: true },
         });
 
     if (!user || user.status !== 'ACTIVE') {
+      return res.status(401).json({ error: 'Credenciales incorrectas' });
+    }
+
+    if (doctorId && user.role !== 'DOCTOR') {
       return res.status(401).json({ error: 'Credenciales incorrectas' });
     }
 
@@ -57,13 +64,13 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Credenciales incorrectas' });
     }
 
-    if (user.role === 'DOCTOR' && !user.doctorId) {
-      return res.status(403).json({ error: 'Esta cuenta no tiene un médico asociado' });
+    if (user.role === 'DOCTOR' && (!user.doctorId || !user.doctor?.active)) {
+      return res.status(403).json({ error: 'Esta cuenta no tiene un médico activo asociado' });
     }
 
     const sessionUser: SessionUser = {
       id: user.id,
-      name: user.name,
+      name: user.doctor?.name || user.name,
       email: user.email,
       role: user.role,
       doctorId: user.doctorId,

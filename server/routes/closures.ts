@@ -4,8 +4,8 @@ import { requireAuth, requireRole, getUser } from '../middleware/auth';
 import { closeDaySchema, reopenDaySchema } from '../../shared/schemas';
 import {
   assertDoctorAccess,
-  doctorScope,
   parseDateOnly,
+  resolveDoctorFilter,
   toNumber,
   writeAudit,
 } from '../utils';
@@ -58,8 +58,7 @@ router.get('/preview', requireAuth, async (req, res) => {
     const dateStr = req.query.date as string;
     if (!dateStr) return res.status(400).json({ error: 'Fecha requerida' });
 
-    let doctorId = doctorScope(user);
-    if (user.role === 'ADMIN') doctorId = (req.query.doctorId as string) || doctorId;
+    const doctorId = resolveDoctorFilter(user, req.query.doctorId as string | undefined);
     if (!doctorId) return res.status(400).json({ error: 'Doctor requerido' });
     assertDoctorAccess(user, doctorId);
 
@@ -92,8 +91,7 @@ router.post('/close', requireAuth, async (req, res) => {
       return res.status(400).json({ error: parsed.error.errors[0]?.message ?? 'Datos inválidos' });
     }
 
-    let doctorId = user.doctorId;
-    if (user.role === 'ADMIN') doctorId = parsed.data.doctorId || doctorId;
+    const doctorId = resolveDoctorFilter(user, parsed.data.doctorId);
     if (!doctorId) return res.status(400).json({ error: 'Doctor requerido' });
     assertDoctorAccess(user, doctorId);
 
@@ -201,9 +199,8 @@ router.get('/', requireAuth, async (req, res) => {
   try {
     const user = getUser(req);
     const where: Record<string, unknown> = {};
-    const scope = doctorScope(user);
-    if (scope) where.doctorId = scope;
-    else if (req.query.doctorId) where.doctorId = req.query.doctorId as string;
+    const doctorId = resolveDoctorFilter(user, req.query.doctorId as string | undefined);
+    if (doctorId) where.doctorId = doctorId;
 
     if (req.query.from || req.query.to) {
       where.date = {};
@@ -223,8 +220,9 @@ router.get('/', requireAuth, async (req, res) => {
     });
     res.json({ closures });
   } catch (e) {
+    const err = e as Error & { status?: number };
     console.error(e);
-    res.status(500).json({ error: 'Error al listar cierres' });
+    res.status(err.status ?? 500).json({ error: err.message || 'Error al listar cierres' });
   }
 });
 

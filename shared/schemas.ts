@@ -21,7 +21,7 @@ export const attendSchema = z.object({
   actualTime: z.string().min(1, 'Hora de atención requerida'),
   treatment: z.string().min(1, 'Tratamiento obligatorio'),
   amount: z.number().positive('El monto debe ser mayor a 0'),
-  paymentMethod: z.enum(PAYMENT_METHODS),
+  paymentMethod: z.enum(PAYMENT_METHODS).optional(),
   notes: z.string().optional(),
 });
 
@@ -33,7 +33,7 @@ export const walkInSchema = z.object({
   actualTime: z.string().min(1, 'Hora de atención requerida'),
   treatment: z.string().min(1, 'Tratamiento obligatorio'),
   amount: z.number().positive('El monto debe ser mayor a 0'),
-  paymentMethod: z.enum(PAYMENT_METHODS),
+  paymentMethod: z.enum(PAYMENT_METHODS).optional(),
   notes: z.string().optional(),
   doctorId: z.string().optional(),
   attendanceDate: z.string().optional(),

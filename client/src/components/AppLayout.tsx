@@ -3,7 +3,7 @@ import { useAuth } from '../auth/AuthContext';
 import { cn } from '../lib/utils';
 
 const doctorLinks = [
-  { to: '/hoy', label: 'Hoy' },
+  { to: '/agenda', label: 'Hoy' },
   { to: '/atendidos', label: 'Atendidos' },
   { to: '/reportes', label: 'Reportes' },
 ];
@@ -27,7 +27,7 @@ export function AppLayout() {
       <header className="sticky top-0 z-40 border-b border-white/70 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3">
           <div className="flex items-center gap-6">
-            <Link to={user?.role === 'ADMIN' ? '/admin' : '/hoy'} className="font-display text-xl font-semibold text-brand-800">
+            <Link to={user?.role === 'ADMIN' ? '/admin' : '/agenda'} className="font-display text-xl font-semibold text-brand-800">
               DermaOps
             </Link>
             <nav className="hidden items-center gap-1 md:flex">
@@ -51,7 +51,7 @@ export function AppLayout() {
             <div className="text-right">
               <div className="text-sm font-semibold">{user?.name}</div>
               <div className="text-xs text-slate-500">
-                {user?.role === 'ADMIN' ? 'Administrador' : 'Médico'}
+                {user?.role === 'ADMIN' ? 'Administrador · toda la operación' : 'Médico · solo tu información'}
               </div>
             </div>
             <button

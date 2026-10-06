@@ -58,12 +58,21 @@ export function nowTimeInMexico(): string {
 
 export function doctorScope(user: SessionUser): string | null {
   if (user.role === 'ADMIN') return null;
+  if (!user.doctorId) {
+    const err = new Error('Usuario sin médico asociado');
+    (err as Error & { status: number }).status = 403;
+    throw err;
+  }
   return user.doctorId;
 }
 
-export function requestedDoctorId(user: SessionUser, requested?: string | null): string | null {
+export function resolveDoctorFilter(user: SessionUser, requested?: string | null): string | null {
   if (user.role === 'ADMIN') return requested || null;
-  return user.doctorId;
+  return doctorScope(user);
+}
+
+export function requestedDoctorId(user: SessionUser, requested?: string | null): string | null {
+  return resolveDoctorFilter(user, requested);
 }
 
 export function assertDoctorAccess(user: SessionUser, doctorId: string | null | undefined) {

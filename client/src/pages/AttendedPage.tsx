@@ -5,7 +5,7 @@ import { Badge } from '../components/Badge';
 import { money } from '../components/KpiGrid';
 import { DateQuickFilters } from '../components/DateQuickFilters';
 import { todayISO } from '../lib/utils';
-import { PAYMENT_LABELS, ORIGIN_LABELS, PAYMENT_METHODS, type PaymentMethod } from '@shared/constants';
+import { ORIGIN_LABELS } from '@shared/constants';
 
 type Attendance = {
   id: string;
@@ -14,7 +14,6 @@ type Attendance = {
   patientName: string;
   treatment: string;
   amount: number | string;
-  paymentMethod: keyof typeof PAYMENT_LABELS;
   origin: keyof typeof ORIGIN_LABELS;
   phone?: string | null;
   email?: string | null;
@@ -40,7 +39,6 @@ export function AttendedPage() {
     actualTime: '',
     treatment: '',
     amount: '',
-    paymentMethod: 'CASH' as PaymentMethod,
     notes: '',
   });
   const [saving, setSaving] = useState(false);
@@ -75,7 +73,6 @@ export function AttendedPage() {
       actualTime: r.actualTime,
       treatment: r.treatment,
       amount: String(r.amount),
-      paymentMethod: r.paymentMethod,
       notes: r.notes || '',
     });
   };
@@ -96,7 +93,6 @@ export function AttendedPage() {
         actualTime: form.actualTime,
         treatment: form.treatment,
         amount: Number(form.amount),
-        paymentMethod: form.paymentMethod,
         notes: form.notes,
       });
       setSelected(null);
@@ -113,7 +109,11 @@ export function AttendedPage() {
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-3xl font-semibold">Pacientes atendidos</h1>
-        <p className="text-slate-600">Historial de atenciones con origen agendado o sin cita</p>
+        <p className="text-slate-600">
+          {user?.role === 'ADMIN'
+            ? 'Historial de toda la operación, con origen agendado o sin cita'
+            : 'Solo tu historial de atenciones, con origen agendado o sin cita'}
+        </p>
       </div>
 
       <div className="card space-y-4 p-4">
@@ -162,7 +162,6 @@ export function AttendedPage() {
               <th className="px-4 py-3">Paciente</th>
               <th className="px-4 py-3">Tratamiento</th>
               <th className="px-4 py-3">Monto</th>
-              <th className="px-4 py-3">Pago</th>
               {user?.role === 'ADMIN' && <th className="px-4 py-3">Doctor</th>}
               <th className="px-4 py-3">Origen</th>
               <th className="px-4 py-3"></th>
@@ -176,7 +175,6 @@ export function AttendedPage() {
                 <td className="px-4 py-3 font-medium">{r.patientName}</td>
                 <td className="px-4 py-3">{r.treatment}</td>
                 <td className="px-4 py-3">{money(Number(r.amount))}</td>
-                <td className="px-4 py-3">{PAYMENT_LABELS[r.paymentMethod]}</td>
                 {user?.role === 'ADMIN' && <td className="px-4 py-3">{r.doctor?.name}</td>}
                 <td className="px-4 py-3"><Badge status={r.origin === 'WALK_IN' ? 'RESCHEDULED' : 'ATTENDED'} label={ORIGIN_LABELS[r.origin]} /></td>
                 <td className="px-4 py-3">
@@ -211,7 +209,6 @@ export function AttendedPage() {
               <div className="mt-4 space-y-2 text-sm">
                 <div>Tratamiento: <strong>{selected.treatment}</strong></div>
                 <div>Monto: <strong>{money(Number(selected.amount))}</strong></div>
-                <div>Pago: {PAYMENT_LABELS[selected.paymentMethod]}</div>
                 <div>Hora: {selected.actualTime}</div>
                 <div>Origen: {ORIGIN_LABELS[selected.origin]}</div>
                 <div>Teléfono: {selected.phone || '—'}</div>
@@ -242,19 +239,9 @@ export function AttendedPage() {
                   <label className="label">Tratamiento *</label>
                   <input className="input" value={form.treatment} onChange={(e) => setForm({ ...form, treatment: e.target.value })} />
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="label">Monto *</label>
-                    <input className="input" type="number" min="0.01" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
-                  </div>
-                  <div>
-                    <label className="label">Forma de pago</label>
-                    <select className="input" value={form.paymentMethod} onChange={(e) => setForm({ ...form, paymentMethod: e.target.value as PaymentMethod })}>
-                      {PAYMENT_METHODS.map((m) => (
-                        <option key={m} value={m}>{PAYMENT_LABELS[m]}</option>
-                      ))}
-                    </select>
-                  </div>
+                <div>
+                  <label className="label">Monto *</label>
+                  <input className="input" type="number" min="0.01" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
                 </div>
                 <div>
                   <label className="label">Observaciones</label>

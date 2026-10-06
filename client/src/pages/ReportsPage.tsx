@@ -7,18 +7,13 @@ import {
   Tooltip,
   XAxis,
   YAxis,
-  PieChart,
-  Pie,
-  Cell,
 } from 'recharts';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { KpiGrid, money } from '../components/KpiGrid';
 import { DateQuickFilters } from '../components/DateQuickFilters';
 import { todayISO } from '../lib/utils';
-import { PAYMENT_METHODS, PAYMENT_LABELS, ATTENDANCE_ORIGINS, ORIGIN_LABELS } from '@shared/constants';
-
-const COLORS = ['#246464', '#4a9e9e', '#7ebfbf', '#1e5050', '#94a3b8'];
+import { ATTENDANCE_ORIGINS, ORIGIN_LABELS } from '@shared/constants';
 
 type Report = {
   summary: {
@@ -55,7 +50,6 @@ export function ReportsPage() {
   const [to, setTo] = useState(todayISO());
   const [doctorId, setDoctorId] = useState('');
   const [treatment, setTreatment] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('');
   const [origin, setOrigin] = useState('');
   const [doctors, setDoctors] = useState<Array<{ id: string; name: string }>>([]);
   const [report, setReport] = useState<Report | null>(null);
@@ -70,7 +64,6 @@ export function ReportsPage() {
     const params = new URLSearchParams({ from, to });
     if (user?.role === 'ADMIN' && doctorId) params.set('doctorId', doctorId);
     if (treatment) params.set('treatment', treatment);
-    if (paymentMethod) params.set('paymentMethod', paymentMethod);
     if (origin) params.set('origin', origin);
     const data = await api.get<Report>(`/api/reports/summary?${params}`);
     setReport(data);
@@ -84,7 +77,6 @@ export function ReportsPage() {
     const params = new URLSearchParams({ from, to });
     if (user?.role === 'ADMIN' && doctorId) params.set('doctorId', doctorId);
     if (treatment) params.set('treatment', treatment);
-    if (paymentMethod) params.set('paymentMethod', paymentMethod);
     if (origin) params.set('origin', origin);
     const res = await fetch(`/api/reports/export?${params}`, { credentials: 'include' });
     if (!res.ok) {
@@ -105,7 +97,11 @@ export function ReportsPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl font-semibold">Reportes</h1>
-          <p className="text-slate-600">Resumen ejecutivo y detalle exportable</p>
+          <p className="text-slate-600">
+            {user?.role === 'ADMIN'
+              ? 'Resumen de toda la operación y detalle exportable'
+              : 'Solo tu resumen y detalle exportable'}
+          </p>
         </div>
         <button className="btn-primary" onClick={exportExcel}>Exportar Excel</button>
       </div>
@@ -145,13 +141,6 @@ export function ReportsPage() {
             <input className="input" value={treatment} onChange={(e) => setTreatment(e.target.value)} placeholder="Opcional" />
           </div>
           <div>
-            <label className="label">Forma de pago</label>
-            <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-              <option value="">Todas</option>
-              {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{PAYMENT_LABELS[m]}</option>)}
-            </select>
-          </div>
-          <div>
             <label className="label">Origen</label>
             <select className="input" value={origin} onChange={(e) => setOrigin(e.target.value)}>
               <option value="">Todos</option>
@@ -174,8 +163,7 @@ export function ReportsPage() {
           />
           <div className="text-sm text-slate-600">Tasa de asistencia: <strong>{report.summary.attendanceRate.toFixed(1)}%</strong></div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="card p-4">
+          <div className="card p-4">
               <h3 className="mb-3 font-semibold">Pacientes atendidos por día</h3>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
@@ -188,25 +176,10 @@ export function ReportsPage() {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </div>
-            <div className="card p-4">
-              <h3 className="mb-3 font-semibold">Ingresos por forma de pago</h3>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={report.byPayment} dataKey="amount" nameKey="label" outerRadius={90} label>
-                      {report.byPayment.map((_, i) => (
-                        <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(v: number) => money(v)} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className={`grid gap-4 ${user?.role === 'ADMIN' ? 'lg:grid-cols-2' : ''}`}>
+            {user?.role === 'ADMIN' && (
             <div className="card p-4">
               <h3 className="mb-3 font-semibold">Ingresos por doctor</h3>
               <div className="space-y-2 text-sm">
@@ -218,6 +191,7 @@ export function ReportsPage() {
                 ))}
               </div>
             </div>
+            )}
             <div className="card p-4">
               <h3 className="mb-3 font-semibold">Tratamientos más realizados</h3>
               <div className="space-y-2 text-sm">
@@ -239,10 +213,9 @@ export function ReportsPage() {
                   <th className="px-4 py-3">Fecha</th>
                   <th className="px-4 py-3">Hora</th>
                   <th className="px-4 py-3">Paciente</th>
-                  <th className="px-4 py-3">Doctor</th>
+                  {user?.role === 'ADMIN' && <th className="px-4 py-3">Doctor</th>}
                   <th className="px-4 py-3">Tratamiento</th>
                   <th className="px-4 py-3">Monto</th>
-                  <th className="px-4 py-3">Pago</th>
                   <th className="px-4 py-3">Origen</th>
                 </tr>
               </thead>
@@ -252,10 +225,9 @@ export function ReportsPage() {
                     <td className="px-4 py-3">{r.date}</td>
                     <td className="px-4 py-3">{r.time}</td>
                     <td className="px-4 py-3">{r.patientName}</td>
-                    <td className="px-4 py-3">{r.doctor}</td>
+                    {user?.role === 'ADMIN' && <td className="px-4 py-3">{r.doctor}</td>}
                     <td className="px-4 py-3">{r.treatment}</td>
                     <td className="px-4 py-3">{money(r.amount)}</td>
-                    <td className="px-4 py-3">{r.paymentLabel}</td>
                     <td className="px-4 py-3">{r.originLabel}</td>
                   </tr>
                 ))}

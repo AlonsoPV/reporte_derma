@@ -2,7 +2,7 @@ import { Router } from 'express';
 import ExcelJS from 'exceljs';
 import { prisma } from '../db';
 import { requireAuth, getUser } from '../middleware/auth';
-import { doctorScope, parseDateOnly, toNumber, todayInMexico } from '../utils';
+import { parseDateOnly, resolveDoctorFilter, toNumber, todayInMexico } from '../utils';
 import { PAYMENT_LABELS, ORIGIN_LABELS, STATUS_LABELS } from '../../shared/constants';
 
 const router = Router();
@@ -73,10 +73,7 @@ router.get('/summary', requireAuth, async (req, res) => {
     const fromDate = parseDateOnly(from);
     const toDate = parseDateOnly(to);
 
-    let doctorId = doctorScope(user);
-    if (user.role === 'ADMIN' && req.query.doctorId) {
-      doctorId = req.query.doctorId as string;
-    }
+    const doctorId = resolveDoctorFilter(user, req.query.doctorId as string | undefined);
 
     const apptWhere: Record<string, unknown> = {
       appointmentDate: { gte: fromDate, lte: toDate },
@@ -180,8 +177,9 @@ router.get('/summary', requireAuth, async (req, res) => {
       })),
     });
   } catch (e) {
+    const err = e as Error & { status?: number };
     console.error(e);
-    res.status(500).json({ error: 'Error al generar reporte' });
+    res.status(err.status ?? 500).json({ error: err.message || 'Error al generar reporte' });
   }
 });
 
@@ -197,8 +195,7 @@ router.get('/export', requireAuth, async (req, res) => {
     const fromDate = parseDateOnly(from);
     const toDate = parseDateOnly(to);
 
-    let doctorId = doctorScope(user);
-    if (user.role === 'ADMIN' && req.query.doctorId) doctorId = req.query.doctorId as string;
+    const doctorId = resolveDoctorFilter(user, req.query.doctorId as string | undefined);
 
     const attWhere: Record<string, unknown> = {
       attendanceDate: { gte: fromDate, lte: toDate },
@@ -223,7 +220,6 @@ router.get('/export', requireAuth, async (req, res) => {
       { header: 'Doctor', key: 'doctor', width: 28 },
       { header: 'Tratamiento', key: 'treatment', width: 20 },
       { header: 'Monto', key: 'amount', width: 12 },
-      { header: 'Forma de pago', key: 'payment', width: 16 },
       { header: 'Origen', key: 'origin', width: 12 },
       { header: 'Estado', key: 'status', width: 14 },
     ];
@@ -236,7 +232,6 @@ router.get('/export', requireAuth, async (req, res) => {
         doctor: a.doctor.name,
         treatment: a.treatment,
         amount: toNumber(a.amount),
-        payment: PAYMENT_LABELS[a.paymentMethod],
         origin: ORIGIN_LABELS[a.origin],
         status: STATUS_LABELS[a.appointment?.operationalStatus ?? 'ATTENDED'],
       });
@@ -257,8 +252,9 @@ router.get('/export', requireAuth, async (req, res) => {
     res.end();
     void originalUrl;
   } catch (e) {
+    const err = e as Error & { status?: number };
     console.error(e);
-    res.status(500).json({ error: 'Error al exportar Excel' });
+    res.status(err.status ?? 500).json({ error: err.message || 'Error al exportar Excel' });
   }
 });
 
