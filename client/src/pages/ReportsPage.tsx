@@ -14,7 +14,8 @@ import {
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { KpiGrid, money } from '../components/KpiGrid';
-import { todayISO, shiftDate } from '../lib/utils';
+import { DateQuickFilters } from '../components/DateQuickFilters';
+import { todayISO } from '../lib/utils';
 import { PAYMENT_METHODS, PAYMENT_LABELS, ATTENDANCE_ORIGINS, ORIGIN_LABELS } from '@shared/constants';
 
 const COLORS = ['#246464', '#4a9e9e', '#7ebfbf', '#1e5050', '#94a3b8'];
@@ -50,7 +51,7 @@ type Report = {
 
 export function ReportsPage() {
   const { user } = useAuth();
-  const [from, setFrom] = useState(shiftDate(todayISO(), -7));
+  const [from, setFrom] = useState(todayISO());
   const [to, setTo] = useState(todayISO());
   const [doctorId, setDoctorId] = useState('');
   const [treatment, setTreatment] = useState('');
@@ -67,7 +68,7 @@ export function ReportsPage() {
 
   const load = async () => {
     const params = new URLSearchParams({ from, to });
-    if (doctorId) params.set('doctorId', doctorId);
+    if (user?.role === 'ADMIN' && doctorId) params.set('doctorId', doctorId);
     if (treatment) params.set('treatment', treatment);
     if (paymentMethod) params.set('paymentMethod', paymentMethod);
     if (origin) params.set('origin', origin);
@@ -77,11 +78,11 @@ export function ReportsPage() {
 
   useEffect(() => {
     load().catch(console.error);
-  }, []);
+  }, [from, to, doctorId]);
 
   const exportExcel = async () => {
     const params = new URLSearchParams({ from, to });
-    if (doctorId) params.set('doctorId', doctorId);
+    if (user?.role === 'ADMIN' && doctorId) params.set('doctorId', doctorId);
     if (treatment) params.set('treatment', treatment);
     if (paymentMethod) params.set('paymentMethod', paymentMethod);
     if (origin) params.set('origin', origin);
@@ -109,44 +110,56 @@ export function ReportsPage() {
         <button className="btn-primary" onClick={exportExcel}>Exportar Excel</button>
       </div>
 
-      <div className="card grid gap-3 p-4 md:grid-cols-3 lg:grid-cols-6">
-        <div>
-          <label className="label">Desde</label>
-          <input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+      <div className="card space-y-4 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <DateQuickFilters
+            from={from}
+            to={to}
+            onChange={({ from: f, to: t }) => {
+              setFrom(f);
+              setTo(t);
+            }}
+          />
+          <button className="btn-secondary" onClick={() => load()}>Aplicar filtros</button>
         </div>
-        <div>
-          <label className="label">Hasta</label>
-          <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-        </div>
-        {user?.role === 'ADMIN' && (
+        <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
           <div>
-            <label className="label">Doctor</label>
-            <select className="input" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
-              <option value="">Todos</option>
-              {doctors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            <label className="label">Desde</label>
+            <input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Hasta</label>
+            <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          </div>
+          {user?.role === 'ADMIN' && (
+            <div>
+              <label className="label">Doctor</label>
+              <select className="input" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
+                <option value="">Todos</option>
+                {doctors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="label">Tratamiento</label>
+            <input className="input" value={treatment} onChange={(e) => setTreatment(e.target.value)} placeholder="Opcional" />
+          </div>
+          <div>
+            <label className="label">Forma de pago</label>
+            <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+              <option value="">Todas</option>
+              {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{PAYMENT_LABELS[m]}</option>)}
             </select>
           </div>
-        )}
-        <div>
-          <label className="label">Tratamiento</label>
-          <input className="input" value={treatment} onChange={(e) => setTreatment(e.target.value)} placeholder="Opcional" />
-        </div>
-        <div>
-          <label className="label">Forma de pago</label>
-          <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-            <option value="">Todas</option>
-            {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{PAYMENT_LABELS[m]}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="label">Origen</label>
-          <select className="input" value={origin} onChange={(e) => setOrigin(e.target.value)}>
-            <option value="">Todos</option>
-            {ATTENDANCE_ORIGINS.map((o) => <option key={o} value={o}>{ORIGIN_LABELS[o]}</option>)}
-          </select>
+          <div>
+            <label className="label">Origen</label>
+            <select className="input" value={origin} onChange={(e) => setOrigin(e.target.value)}>
+              <option value="">Todos</option>
+              {ATTENDANCE_ORIGINS.map((o) => <option key={o} value={o}>{ORIGIN_LABELS[o]}</option>)}
+            </select>
+          </div>
         </div>
       </div>
-      <button className="btn-secondary" onClick={() => load()}>Aplicar filtros</button>
 
       {report && (
         <>

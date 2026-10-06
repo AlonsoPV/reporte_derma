@@ -31,11 +31,11 @@ export default function App() {
           <Route element={<AppLayout />}>
             <Route path="/" element={<HomeRedirect />} />
             <Route path="/hoy" element={<TodayPage />} />
+            <Route path="/agenda" element={<AgendaPage />} />
             <Route path="/atendidos" element={<AttendedPage />} />
             <Route path="/reportes" element={<ReportsPage />} />
             <Route element={<Protected roles={['ADMIN']} />}>
               <Route path="/admin" element={<AdminDashboardPage />} />
-              <Route path="/agenda" element={<AgendaPage />} />
               <Route path="/importar" element={<ImportPage />} />
               <Route path="/administracion" element={<AdminPage />} />
             </Route>

@@ -1,10 +1,16 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api, type SessionUser } from '../lib/api';
 
+type LoginPayload = {
+  password: string;
+  email?: string;
+  doctorId?: string;
+};
+
 type AuthContextValue = {
   user: SessionUser | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<SessionUser>;
+  login: (payload: LoginPayload) => Promise<SessionUser>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 };
@@ -30,8 +36,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refresh();
   }, []);
 
-  const login = async (email: string, password: string) => {
-    const data = await api.post<{ user: SessionUser }>('/api/auth/login', { email, password });
+  const login = async (payload: LoginPayload) => {
+    const data = await api.post<{ user: SessionUser }>('/api/auth/login', payload);
     setUser(data.user);
     return data.user;
   };

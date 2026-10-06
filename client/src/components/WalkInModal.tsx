@@ -8,10 +8,12 @@ export function WalkInModal({
   date,
   onClose,
   onSaved,
+  initialDoctorId,
 }: {
   date: string;
   onClose: () => void;
   onSaved: () => void;
+  initialDoctorId?: string;
 }) {
   const { user } = useAuth();
   const [patientName, setPatientName] = useState('');
@@ -23,7 +25,7 @@ export function WalkInModal({
   const [amount, setAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [notes, setNotes] = useState('');
-  const [doctorId, setDoctorId] = useState(user?.doctorId || '');
+  const [doctorId, setDoctorId] = useState(initialDoctorId || user?.doctorId || '');
   const [doctors, setDoctors] = useState<Array<{ id: string; name: string }>>([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -32,17 +34,17 @@ export function WalkInModal({
     if (user?.role === 'ADMIN') {
       api.get<{ doctors: Array<{ id: string; name: string }> }>('/api/admin/doctors').then((r) => {
         setDoctors(r.doctors);
-        setDoctorId((current) => current || r.doctors[0]?.id || '');
+        setDoctorId((current) => current || initialDoctorId || r.doctors[0]?.id || '');
       }).catch(() => undefined);
     }
-  }, [user?.role]);
+  }, [user?.role, initialDoctorId]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
       <div className="card max-h-[90vh] w-full max-w-xl overflow-y-auto">
         <div className="border-b border-slate-100 px-6 py-4">
-          <h2 className="font-display text-2xl font-semibold">Paciente sin cita</h2>
-          <p className="text-slate-500">Se guardará directamente como atendido</p>
+          <h2 className="font-display text-2xl font-semibold">Paciente nuevo</h2>
+          <p className="text-slate-500">No estaba agendado. Se registra directo en Atendidos.</p>
         </div>
         <form
           className="space-y-4 px-6 py-5"
@@ -108,12 +110,12 @@ export function WalkInModal({
             </div>
           </div>
           <div>
-            <label className="label">Tratamiento *</label>
-            <input className="input" value={treatment} onChange={(e) => setTreatment(e.target.value)} required />
+            <label className="label">Procedimiento *</label>
+            <input className="input" value={treatment} onChange={(e) => setTreatment(e.target.value)} placeholder="Consulta, Botox, Láser…" required />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="label">Monto *</label>
+              <label className="label">Monto a cobrar *</label>
               <input className="input" type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
             </div>
             <div>
@@ -126,13 +128,13 @@ export function WalkInModal({
             </div>
           </div>
           <div>
-            <label className="label">Observaciones</label>
+            <label className="label">Notas</label>
             <textarea className="input min-h-[80px]" value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
           {error && <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
           <div className="flex gap-2 pt-2">
             <button type="button" className="btn-secondary flex-1" onClick={onClose}>Cancelar</button>
-            <button className="btn-primary flex-1" disabled={saving}>{saving ? 'Guardando…' : 'Guardar'}</button>
+            <button className="btn-primary flex-1" disabled={saving}>{saving ? 'Guardando…' : 'Agregar a atendidos'}</button>
           </div>
         </form>
       </div>

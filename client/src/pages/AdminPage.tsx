@@ -14,8 +14,12 @@ export function AdminPage() {
   const [message, setMessage] = useState('');
 
   const [newUser, setNewUser] = useState({ name: '', email: '', password: '', role: 'DOCTOR', doctorId: '' });
+  const [editingUser, setEditingUser] = useState<any | null>(null);
+  const [editUserForm, setEditUserForm] = useState({ name: '', email: '', password: '', role: 'DOCTOR', doctorId: '', status: 'ACTIVE' });
   const [newDoctor, setNewDoctor] = useState('');
   const [newMapping, setNewMapping] = useState({ excelName: '', doctorId: '' });
+  const [editingDoctor, setEditingDoctor] = useState<any | null>(null);
+  const [editDoctorName, setEditDoctorName] = useState('');
 
   const load = async () => {
     if (tab === 'users' || tab === 'doctors') {
@@ -120,17 +124,35 @@ export function AdminPage() {
                     <td className="px-4 py-3">{u.role}</td>
                     <td className="px-4 py-3">{u.status}</td>
                     <td className="px-4 py-3">
-                      <button
-                        className="btn-ghost"
-                        onClick={async () => {
-                          await api.patch(`/api/admin/users/${u.id}`, {
-                            status: u.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE',
-                          });
-                          await load();
-                        }}
-                      >
-                        {u.status === 'ACTIVE' ? 'Desactivar' : 'Activar'}
-                      </button>
+                      <div className="flex gap-1">
+                        <button
+                          className="btn-secondary"
+                          onClick={() => {
+                            setEditingUser(u);
+                            setEditUserForm({
+                              name: u.name,
+                              email: u.email,
+                              password: '',
+                              role: u.role,
+                              doctorId: u.doctorId || '',
+                              status: u.status,
+                            });
+                          }}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          className="btn-ghost"
+                          onClick={async () => {
+                            await api.patch(`/api/admin/users/${u.id}`, {
+                              status: u.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE',
+                            });
+                            await load();
+                          }}
+                        >
+                          {u.status === 'ACTIVE' ? 'Desactivar' : 'Activar'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -162,15 +184,26 @@ export function AdminPage() {
               {doctors.map((d) => (
                 <li key={d.id} className="flex items-center justify-between border-b border-slate-100 py-2">
                   <span>{d.name} {d.active ? '' : '(inactivo)'}</span>
-                  <button
-                    className="btn-ghost"
-                    onClick={async () => {
-                      await api.patch(`/api/admin/doctors/${d.id}`, { active: !d.active });
-                      await load();
-                    }}
-                  >
-                    {d.active ? 'Desactivar' : 'Activar'}
-                  </button>
+                  <div className="flex gap-1">
+                    <button
+                      className="btn-secondary"
+                      onClick={() => {
+                        setEditingDoctor(d);
+                        setEditDoctorName(d.name);
+                      }}
+                    >
+                      Editar
+                    </button>
+                    <button
+                      className="btn-ghost"
+                      onClick={async () => {
+                        await api.patch(`/api/admin/doctors/${d.id}`, { active: !d.active });
+                        await load();
+                      }}
+                    >
+                      {d.active ? 'Desactivar' : 'Activar'}
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -292,6 +325,77 @@ export function AdminPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
+          <div className="card w-full max-w-md space-y-3 p-6">
+            <h3 className="font-display text-xl font-semibold">Editar usuario</h3>
+            <input className="input" value={editUserForm.name} onChange={(e) => setEditUserForm({ ...editUserForm, name: e.target.value })} placeholder="Nombre" />
+            <input className="input" value={editUserForm.email} onChange={(e) => setEditUserForm({ ...editUserForm, email: e.target.value })} placeholder="Correo" />
+            <input className="input" type="password" value={editUserForm.password} onChange={(e) => setEditUserForm({ ...editUserForm, password: e.target.value })} placeholder="Nueva contraseña (opcional)" />
+            <select className="input" value={editUserForm.role} onChange={(e) => setEditUserForm({ ...editUserForm, role: e.target.value })}>
+              <option value="ADMIN">Administrador</option>
+              <option value="DOCTOR">Doctor</option>
+              <option value="RECEPTION">Recepción</option>
+              <option value="SUPERVISOR">Supervisor</option>
+              <option value="ACCOUNTING">Contabilidad</option>
+            </select>
+            <select className="input" value={editUserForm.doctorId} onChange={(e) => setEditUserForm({ ...editUserForm, doctorId: e.target.value })}>
+              <option value="">Sin doctor relacionado</option>
+              {doctors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+            <select className="input" value={editUserForm.status} onChange={(e) => setEditUserForm({ ...editUserForm, status: e.target.value })}>
+              <option value="ACTIVE">Activo</option>
+              <option value="INACTIVE">Inactivo</option>
+            </select>
+            <div className="flex gap-2 pt-2">
+              <button className="btn-secondary flex-1" onClick={() => setEditingUser(null)}>Cancelar</button>
+              <button
+                className="btn-primary flex-1"
+                onClick={async () => {
+                  const body: Record<string, unknown> = {
+                    name: editUserForm.name,
+                    email: editUserForm.email,
+                    role: editUserForm.role,
+                    doctorId: editUserForm.doctorId || null,
+                    status: editUserForm.status,
+                  };
+                  if (editUserForm.password) body.password = editUserForm.password;
+                  await api.patch(`/api/admin/users/${editingUser.id}`, body);
+                  setEditingUser(null);
+                  setMessage('Usuario actualizado');
+                  await load();
+                }}
+              >
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingDoctor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
+          <div className="card w-full max-w-md space-y-3 p-6">
+            <h3 className="font-display text-xl font-semibold">Editar doctor</h3>
+            <input className="input" value={editDoctorName} onChange={(e) => setEditDoctorName(e.target.value)} />
+            <div className="flex gap-2 pt-2">
+              <button className="btn-secondary flex-1" onClick={() => setEditingDoctor(null)}>Cancelar</button>
+              <button
+                className="btn-primary flex-1"
+                onClick={async () => {
+                  await api.patch(`/api/admin/doctors/${editingDoctor.id}`, { name: editDoctorName });
+                  setEditingDoctor(null);
+                  setMessage('Doctor actualizado');
+                  await load();
+                }}
+              >
+                Guardar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

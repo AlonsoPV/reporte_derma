@@ -50,7 +50,9 @@ export function AppLayout() {
           <div className="flex items-center gap-3">
             <div className="text-right">
               <div className="text-sm font-semibold">{user?.name}</div>
-              <div className="text-xs text-slate-500">{user?.role === 'ADMIN' ? 'Administrador' : 'Doctor'}</div>
+              <div className="text-xs text-slate-500">
+                {user?.role === 'ADMIN' ? 'Administrador' : 'Médico'}
+              </div>
             </div>
             <button
               className="btn-secondary"

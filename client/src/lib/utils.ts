@@ -37,6 +37,10 @@ export function shiftDate(iso: string, days: number) {
   return dt.toISOString().slice(0, 10);
 }
 
+export function startOfMonthISO(iso = todayISO()) {
+  return `${iso.slice(0, 7)}-01`;
+}
+
 export function formatDisplayDate(iso: string) {
   const [y, m, d] = iso.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
@@ -47,4 +51,27 @@ export function formatDisplayDate(iso: string) {
     year: 'numeric',
     timeZone: 'UTC',
   }).format(dt);
+}
+
+export type DatePreset = 'today' | 'yesterday' | 'week' | 'month';
+
+export function resolveDatePreset(preset: DatePreset): { from: string; to: string } {
+  const today = todayISO();
+  if (preset === 'today') return { from: today, to: today };
+  if (preset === 'yesterday') {
+    const y = shiftDate(today, -1);
+    return { from: y, to: y };
+  }
+  if (preset === 'week') return { from: shiftDate(today, -6), to: today };
+  return { from: startOfMonthISO(today), to: today };
+}
+
+export function detectDatePreset(from: string, to: string): DatePreset | null {
+  const today = todayISO();
+  if (from === today && to === today) return 'today';
+  const yesterday = shiftDate(today, -1);
+  if (from === yesterday && to === yesterday) return 'yesterday';
+  if (from === shiftDate(today, -6) && to === today) return 'week';
+  if (from === startOfMonthISO(today) && to === today) return 'month';
+  return null;
 }

@@ -61,11 +61,28 @@ export function doctorScope(user: SessionUser): string | null {
   return user.doctorId;
 }
 
+export function requestedDoctorId(user: SessionUser, requested?: string | null): string | null {
+  if (user.role === 'ADMIN') return requested || null;
+  return user.doctorId;
+}
+
 export function assertDoctorAccess(user: SessionUser, doctorId: string | null | undefined) {
   if (user.role === 'ADMIN') return;
   if (!user.doctorId || user.doctorId !== doctorId) {
     const err = new Error('No autorizado para este doctor');
     (err as Error & { status: number }).status = 403;
+    throw err;
+  }
+}
+
+export async function assertDayOpen(doctorId: string | null | undefined, date: Date) {
+  if (!doctorId) return;
+  const closed = await prisma.dailyClosure.findUnique({
+    where: { doctorId_date: { doctorId, date } },
+  });
+  if (closed?.status === 'CLOSED') {
+    const err = new Error('El día está cerrado. No se permiten cambios. Un administrador debe reabrir el día.');
+    (err as Error & { status: number }).status = 409;
     throw err;
   }
 }

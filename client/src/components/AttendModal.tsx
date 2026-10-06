@@ -28,7 +28,7 @@ export function AttendModal({
   const [treatment, setTreatment] = useState('');
   const [amount, setAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState(appointment.notes || '');
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -58,8 +58,8 @@ export function AttendModal({
     <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-ink/40 p-0 sm:items-center sm:justify-center sm:p-4">
       <div className="card flex h-full w-full max-w-xl flex-col overflow-hidden sm:h-auto sm:max-h-[90vh]">
         <div className="border-b border-slate-100 px-6 py-4">
-          <h2 className="font-display text-2xl font-semibold">Atender paciente</h2>
-          <p className="text-slate-500">Completa la consulta y marca como atendido</p>
+          <h2 className="font-display text-2xl font-semibold">Registrar atención</h2>
+          <p className="text-slate-500">Captura procedimiento, notas y monto. El paciente pasará a Atendidos.</p>
         </div>
         <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
           <div className="rounded-2xl bg-sand p-4">
@@ -81,7 +81,7 @@ export function AttendModal({
                 <input className="input" type="time" value={actualTime} onChange={(e) => setActualTime(e.target.value)} />
               </div>
               <div>
-                <label className="label">Tratamiento *</label>
+                <label className="label">Procedimiento *</label>
                 <input className="input" value={treatment} onChange={(e) => setTreatment(e.target.value)} placeholder="Consulta, Botox, Láser…" autoFocus />
               </div>
               <div>
@@ -97,7 +97,7 @@ export function AttendModal({
                 </select>
               </div>
               <div>
-                <label className="label">Observaciones</label>
+                <label className="label">Notas</label>
                 <textarea className="input min-h-[90px]" value={notes} onChange={(e) => setNotes(e.target.value)} />
               </div>
             </>
@@ -106,8 +106,8 @@ export function AttendModal({
               <div className="font-semibold">Confirmar atención</div>
               <div className="mt-3 space-y-1 text-sm">
                 <div>Paciente: <strong>{appointment.patientName}</strong></div>
-                <div>Tratamiento: <strong>{treatment}</strong></div>
-                <div>Monto: <strong>${amount}</strong></div>
+                <div>Procedimiento: <strong>{treatment}</strong></div>
+                <div>Monto a cobrar: <strong>${amount}</strong></div>
                 <div>Pago: <strong>{PAYMENT_LABELS[paymentMethod]}</strong></div>
               </div>
             </div>
@@ -122,14 +122,14 @@ export function AttendModal({
               className="btn-primary flex-1"
               onClick={() => {
                 if (!treatment.trim() || !amount || Number(amount) <= 0) {
-                  setError('Tratamiento y monto son obligatorios');
+                  setError('Procedimiento y monto son obligatorios');
                   return;
                 }
                 setError('');
                 setConfirming(true);
               }}
             >
-              Marcar como atendido
+              Pasar a atendidos
             </button>
           ) : (
             <button className="btn-primary flex-1" onClick={submit} disabled={saving}>
