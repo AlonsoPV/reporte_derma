@@ -147,12 +147,6 @@ export function CloseDayModal({
                   <div className="sm:col-span-2 text-lg">Total cobrado: <strong>{money(preview.totalAmount)}</strong></div>
                 </div>
               </div>
-              <div className="grid gap-3 sm:grid-cols-4">
-                <div className="card p-3 text-sm">Efectivo<br /><strong>{money(preview.cashAmount)}</strong></div>
-                <div className="card p-3 text-sm">Tarjeta<br /><strong>{money(preview.cardAmount)}</strong></div>
-                <div className="card p-3 text-sm">Transferencia<br /><strong>{money(preview.transferAmount)}</strong></div>
-                <div className="card p-3 text-sm">Otro<br /><strong>{money(preview.otherAmount)}</strong></div>
-              </div>
               <div className="card p-4">
                 <div className="font-semibold">Tratamientos</div>
                 <div className="mt-2 space-y-1 text-sm">

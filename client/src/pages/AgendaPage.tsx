@@ -2,14 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { Badge } from '../components/Badge';
-import { DateQuickFilters } from '../components/DateQuickFilters';
 import { AttendModal } from '../components/AttendModal';
 import { WalkInModal } from '../components/WalkInModal';
 import { CloseDayModal } from '../components/CloseDayModal';
 import { money } from '../components/KpiGrid';
 import { formatDisplayDate, todayISO } from '../lib/utils';
 import { useAuth } from '../auth/AuthContext';
-import { PAYMENT_LABELS, ORIGIN_LABELS } from '@shared/constants';
+import { ORIGIN_LABELS } from '@shared/constants';
 
 type Appointment = {
   id: string;
@@ -33,7 +32,6 @@ type Attendance = {
   patientName: string;
   treatment: string;
   amount: number | string;
-  paymentMethod: keyof typeof PAYMENT_LABELS;
   origin: keyof typeof ORIGIN_LABELS;
   notes?: string | null;
   doctor?: { name: string };
@@ -49,10 +47,10 @@ type DayData = {
 
 export function AgendaPage() {
   const { user } = useAuth();
-  const [params] = useSearchParams();
   const isAdmin = user?.role === 'ADMIN';
-  const [date, setDate] = useState(params.get('date') || todayISO());
-  const [doctorId, setDoctorId] = useState(isAdmin ? params.get('doctorId') || '' : '');
+  const date = todayISO();
+  const [searchParams] = useSearchParams();
+  const [doctorId, setDoctorId] = useState(isAdmin ? searchParams.get('doctorId') || '' : '');
   const [q, setQ] = useState('');
   const [doctors, setDoctors] = useState<Array<{ id: string; name: string }>>([]);
   const [data, setData] = useState<DayData | null>(null);
@@ -62,8 +60,7 @@ export function AgendaPage() {
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
 
-  const isToday = date === todayISO();
-  const closeDoctorId = user?.role === 'ADMIN' ? doctorId : user?.doctorId || '';
+  const closeDoctorId = isAdmin ? doctorId : user?.doctorId || '';
   const canClose = Boolean(closeDoctorId);
   const dayLocked = Boolean(data?.isClosed);
 
@@ -90,7 +87,7 @@ export function AgendaPage() {
 
   useEffect(() => {
     load().catch(console.error);
-  }, [date, doctorId]);
+  }, [doctorId]);
 
   const matchesQuery = (value: string | null | undefined) => {
     if (!q.trim()) return true;
@@ -112,43 +109,50 @@ export function AgendaPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-3xl font-semibold">
-          {isToday ? 'Tablero para el día de hoy' : 'Agenda'}
-        </h1>
-        <p className="capitalize text-slate-600">
-          {user?.role !== 'ADMIN' && user?.name ? `${user.name} · ` : ''}
-          {formatDisplayDate(date)}
-        </p>
-      </div>
-
-      <div className="card space-y-4 p-4">
-        <DateQuickFilters mode="single" date={date} onChange={setDate} />
-        <div className="grid gap-3 md:grid-cols-4">
-          <div>
-            <label className="label">Fecha</label>
-            <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </div>
-          {user?.role === 'ADMIN' && (
-            <div>
-              <label className="label">Doctor</label>
-              <select className="input" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
-                <option value="">Todos</option>
-                {doctors.map((d) => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
-                ))}
-              </select>
-            </div>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="font-display text-3xl font-semibold">Tablero para el día de hoy</h1>
+          <p className="capitalize text-slate-600">
+            {isAdmin
+              ? `Toda la operación · ${formatDisplayDate(date)}`
+              : `${user?.name || 'Tu agenda'} · ${formatDisplayDate(date)}`}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {isAdmin && (
+            <select
+              className="input w-auto min-w-[200px]"
+              value={doctorId}
+              onChange={(e) => setDoctorId(e.target.value)}
+              aria-label="Doctor"
+            >
+              <option value="">Todos los doctores</option>
+              {doctors.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
           )}
-          <div className={user?.role === 'ADMIN' ? 'md:col-span-2' : 'md:col-span-3'}>
-            <label className="label">Buscar</label>
-            <input
-              className="input"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Nombre, teléfono, ID cita"
-            />
-          </div>
+          <input
+            className="input w-56"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar paciente…"
+          />
+          <button
+            className="btn-primary"
+            disabled={dayLocked}
+            onClick={() => setWalkInOpen(true)}
+          >
+            + Paciente nuevo
+          </button>
+          <button
+            className="btn-danger"
+            disabled={!canClose || dayLocked}
+            title={!canClose ? 'Selecciona un doctor para cerrar el día' : undefined}
+            onClick={() => setCloseOpen(true)}
+          >
+            {dayLocked ? 'Día cerrado' : 'Cerrar día'}
+          </button>
         </div>
       </div>
 
@@ -157,27 +161,9 @@ export function AgendaPage() {
           <strong>Día cerrado.</strong> No se permiten más cambios. Un administrador debe reabrir el día para editar.
         </div>
       )}
-
-      <div className="flex flex-wrap gap-2">
-        <button
-          className="btn-primary"
-          disabled={dayLocked}
-          onClick={() => setWalkInOpen(true)}
-        >
-          + Paciente nuevo
-        </button>
-        <button
-          className="btn-danger"
-          disabled={!canClose || dayLocked}
-          title={!canClose ? 'Selecciona un doctor para cerrar el día' : undefined}
-          onClick={() => setCloseOpen(true)}
-        >
-          {dayLocked ? 'Día cerrado' : 'Cerrar día'}
-        </button>
-        {user?.role === 'ADMIN' && !doctorId && (
-          <span className="self-center text-sm text-slate-500">Selecciona un doctor para cerrar su día</span>
-        )}
-      </div>
+      {isAdmin && !doctorId && (
+        <p className="text-sm text-slate-500">Selecciona un doctor para cerrar su día.</p>
+      )}
 
       {error && <div className="rounded-xl bg-rose-50 px-4 py-3 text-rose-700">{error}</div>}
       {loading && <div className="text-slate-500">Cargando tablero…</div>}
@@ -280,7 +266,6 @@ export function AgendaPage() {
                 <th className="px-4 py-3">Paciente</th>
                 <th className="px-4 py-3">Procedimiento</th>
                 <th className="px-4 py-3">Monto</th>
-                <th className="px-4 py-3">Pago</th>
                 {user?.role === 'ADMIN' && <th className="px-4 py-3">Doctor</th>}
                 <th className="px-4 py-3">Origen</th>
                 <th className="px-4 py-3">Notas</th>
@@ -293,7 +278,6 @@ export function AgendaPage() {
                   <td className="px-4 py-3 font-medium">{a.patientName}</td>
                   <td className="px-4 py-3">{a.treatment}</td>
                   <td className="px-4 py-3">{money(Number(a.amount))}</td>
-                  <td className="px-4 py-3">{PAYMENT_LABELS[a.paymentMethod]}</td>
                   {user?.role === 'ADMIN' && <td className="px-4 py-3">{a.doctor?.name}</td>}
                   <td className="px-4 py-3">{ORIGIN_LABELS[a.origin]}</td>
                   <td className="max-w-[220px] truncate px-4 py-3 text-slate-500">{a.notes || '—'}</td>

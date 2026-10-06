@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { nowTime } from '../lib/utils';
-import { PAYMENT_METHODS, PAYMENT_LABELS, type PaymentMethod } from '@shared/constants';
 import { useAuth } from '../auth/AuthContext';
 
 export function WalkInModal({
@@ -23,7 +22,6 @@ export function WalkInModal({
   const [actualTime, setActualTime] = useState(nowTime());
   const [treatment, setTreatment] = useState('');
   const [amount, setAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [notes, setNotes] = useState('');
   const [doctorId, setDoctorId] = useState(initialDoctorId || user?.doctorId || '');
   const [doctors, setDoctors] = useState<Array<{ id: string; name: string }>>([]);
@@ -61,7 +59,6 @@ export function WalkInModal({
                 actualTime,
                 treatment,
                 amount: Number(amount),
-                paymentMethod,
                 notes,
                 attendanceDate: date,
                 doctorId: user?.role === 'ADMIN' ? doctorId : undefined,
@@ -113,19 +110,9 @@ export function WalkInModal({
             <label className="label">Procedimiento *</label>
             <input className="input" value={treatment} onChange={(e) => setTreatment(e.target.value)} placeholder="Consulta, Botox, Láser…" required />
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="label">Monto a cobrar *</label>
-              <input className="input" type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
-            </div>
-            <div>
-              <label className="label">Forma de pago</label>
-              <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}>
-                {PAYMENT_METHODS.map((m) => (
-                  <option key={m} value={m}>{PAYMENT_LABELS[m]}</option>
-                ))}
-              </select>
-            </div>
+          <div>
+            <label className="label">Monto a cobrar *</label>
+            <input className="input" type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
           </div>
           <div>
             <label className="label">Notas</label>

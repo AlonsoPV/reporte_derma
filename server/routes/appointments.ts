@@ -4,7 +4,7 @@ import { requireAuth, getUser } from '../middleware/auth';
 import {
   assertDoctorAccess,
   assertDayOpen,
-  doctorScope,
+  resolveDoctorFilter,
   formatDateOnly,
   parseDateOnly,
   toNumber,
@@ -23,12 +23,7 @@ router.get('/day', requireAuth, async (req, res) => {
     const doctorIdParam = req.query.doctorId as string | undefined;
     const date = parseDateOnly(dateStr);
 
-    let doctorId = doctorScope(user);
-    if (user.role === 'ADMIN') {
-      doctorId = doctorIdParam || null;
-    } else if (!doctorId) {
-      return res.status(403).json({ error: 'Usuario doctor sin doctor asociado' });
-    }
+    const doctorId = resolveDoctorFilter(user, doctorIdParam);
 
     const whereAppt: Record<string, unknown> = { appointmentDate: date };
     if (doctorId) whereAppt.doctorId = doctorId;
@@ -85,8 +80,9 @@ router.get('/day', requireAuth, async (req, res) => {
       isClosed: doctorId ? closedDoctorIds.includes(doctorId) : false,
     });
   } catch (e) {
+    const err = e as Error & { status?: number };
     console.error(e);
-    res.status(500).json({ error: 'Error al cargar el día' });
+    res.status(err.status ?? 500).json({ error: err.message || 'Error al cargar el día' });
   }
 });
 
@@ -103,9 +99,8 @@ router.get('/appointments', requireAuth, async (req, res) => {
     } = req.query as Record<string, string | undefined>;
 
     const where: Record<string, unknown> = {};
-    const scope = doctorScope(user);
-    if (scope) where.doctorId = scope;
-    else if (doctorIdParam) where.doctorId = doctorIdParam;
+    const doctorId = resolveDoctorFilter(user, doctorIdParam);
+    if (doctorId) where.doctorId = doctorId;
 
     if (date) where.appointmentDate = parseDateOnly(date);
     if (from || to) {
@@ -130,8 +125,9 @@ router.get('/appointments', requireAuth, async (req, res) => {
     });
     res.json({ appointments });
   } catch (e) {
+    const err = e as Error & { status?: number };
     console.error(e);
-    res.status(500).json({ error: 'Error al listar citas' });
+    res.status(err.status ?? 500).json({ error: err.message || 'Error al listar citas' });
   }
 });
 
@@ -194,7 +190,7 @@ router.post('/attend', requireAuth, async (req, res) => {
           actualTime: data.actualTime,
           treatment: data.treatment.trim(),
           amount: data.amount,
-          paymentMethod: data.paymentMethod,
+          paymentMethod: data.paymentMethod || 'OTHER',
           notes: data.notes,
           origin: 'SCHEDULED',
           dataSource: 'MANUAL',
@@ -271,7 +267,7 @@ router.post('/walk-in', requireAuth, async (req, res) => {
         actualTime: data.actualTime,
         treatment: data.treatment.trim(),
         amount: data.amount,
-        paymentMethod: data.paymentMethod,
+        paymentMethod: data.paymentMethod || 'OTHER',
         notes: data.notes,
         origin: 'WALK_IN',
         dataSource: 'MANUAL',
@@ -359,9 +355,8 @@ router.get('/attendances', requireAuth, async (req, res) => {
     } = req.query as Record<string, string | undefined>;
 
     const where: Record<string, unknown> = {};
-    const scope = doctorScope(user);
-    if (scope) where.doctorId = scope;
-    else if (doctorIdParam) where.doctorId = doctorIdParam;
+    const doctorId = resolveDoctorFilter(user, doctorIdParam);
+    if (doctorId) where.doctorId = doctorId;
 
     if (date) where.attendanceDate = parseDateOnly(date);
     if (from || to) {
@@ -403,8 +398,9 @@ router.get('/attendances', requireAuth, async (req, res) => {
       })),
     });
   } catch (e) {
+    const err = e as Error & { status?: number };
     console.error(e);
-    res.status(500).json({ error: 'Error al listar atenciones' });
+    res.status(err.status ?? 500).json({ error: err.message || 'Error al listar atenciones' });
   }
 });
 

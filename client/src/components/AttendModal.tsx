@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { api } from '../lib/api';
 import { nowTime } from '../lib/utils';
-import { PAYMENT_METHODS, PAYMENT_LABELS, type PaymentMethod } from '@shared/constants';
 
 type Appointment = {
   id: string;
@@ -27,7 +26,6 @@ export function AttendModal({
   const [actualTime, setActualTime] = useState(nowTime());
   const [treatment, setTreatment] = useState('');
   const [amount, setAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [notes, setNotes] = useState(appointment.notes || '');
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState('');
@@ -42,7 +40,6 @@ export function AttendModal({
         actualTime,
         treatment,
         amount: Number(amount),
-        paymentMethod,
         notes,
       });
       onSaved();
@@ -89,14 +86,6 @@ export function AttendModal({
                 <input className="input" type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
               </div>
               <div>
-                <label className="label">Forma de pago *</label>
-                <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}>
-                  {PAYMENT_METHODS.map((m) => (
-                    <option key={m} value={m}>{PAYMENT_LABELS[m]}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
                 <label className="label">Notas</label>
                 <textarea className="input min-h-[90px]" value={notes} onChange={(e) => setNotes(e.target.value)} />
               </div>
@@ -108,7 +97,6 @@ export function AttendModal({
                 <div>Paciente: <strong>{appointment.patientName}</strong></div>
                 <div>Procedimiento: <strong>{treatment}</strong></div>
                 <div>Monto a cobrar: <strong>${amount}</strong></div>
-                <div>Pago: <strong>{PAYMENT_LABELS[paymentMethod]}</strong></div>
               </div>
             </div>
           )}
