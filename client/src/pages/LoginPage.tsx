@@ -57,6 +57,20 @@ export function LoginPage() {
           </button>
         </div>
 
+        <div className="mb-5 rounded-xl border border-brand-100 bg-brand-50 px-4 py-3 text-sm text-slate-700">
+          <p className="font-semibold text-brand-800">Acceso de demostración</p>
+          {mode === 'doctor' ? (
+            <p className="mt-1">
+              Selecciona un médico de la lista. Contraseña: <code className="font-semibold">Demo123!</code>
+            </p>
+          ) : (
+            <div className="mt-1 space-y-1">
+              <p>Correo: <code className="font-semibold">admin@clinicademo.local</code></p>
+              <p>Contraseña: <code className="font-semibold">Demo123!</code></p>
+            </div>
+          )}
+        </div>
+
         <form
           className="space-y-4"
           autoComplete="off"
