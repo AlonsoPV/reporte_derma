@@ -1,1 +1,2 @@
 - [Vite/esbuild target compatibility](vite-esbuild-target.md) — use an ESNext target for both build and dependency optimization if esbuild rejects destructuring.
+- [GitHub push authentication](github-push-auth.md) — GitHub App API access does not automatically authenticate Git-over-HTTPS pushes from the shell.
