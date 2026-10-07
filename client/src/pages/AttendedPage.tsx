@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { Badge } from '../components/Badge';
 import { money } from '../components/KpiGrid';
 import { DateQuickFilters } from '../components/DateQuickFilters';
-import { todayISO } from '../lib/utils';
+import { resolveDatePreset } from '../lib/utils';
 import { ORIGIN_LABELS } from '@shared/constants';
 
 type Attendance = {
@@ -24,8 +24,9 @@ type Attendance = {
 
 export function AttendedPage() {
   const { user } = useAuth();
-  const [from, setFrom] = useState(todayISO());
-  const [to, setTo] = useState(todayISO());
+  const initialRange = resolveDatePreset('week');
+  const [from, setFrom] = useState(initialRange.from);
+  const [to, setTo] = useState(initialRange.to);
   const [q, setQ] = useState('');
   const [doctorId, setDoctorId] = useState('');
   const [doctors, setDoctors] = useState<Array<{ id: string; name: string }>>([]);
@@ -79,6 +80,11 @@ export function AttendedPage() {
 
   const save = async () => {
     if (!selected) return;
+    if (selected.isDayClosed) {
+      setError('El día está cerrado. No se puede editar.');
+      setEditing(false);
+      return;
+    }
     if (!form.patientName.trim() || !form.treatment.trim() || Number(form.amount) <= 0) {
       setError('Nombre, tratamiento y monto son obligatorios');
       return;
@@ -111,8 +117,8 @@ export function AttendedPage() {
         <h1 className="font-display text-3xl font-semibold">Pacientes atendidos</h1>
         <p className="text-slate-600">
           {user?.role === 'ADMIN'
-            ? 'Historial de toda la operación, con origen agendado o sin cita'
-            : 'Solo tu historial de atenciones, con origen agendado o sin cita'}
+            ? 'Histórico de toda la operación. Los días cerrados solo se consultan.'
+            : 'Solo tu histórico de atenciones. Los días cerrados no se pueden editar.'}
         </p>
       </div>
 
@@ -189,6 +195,13 @@ export function AttendedPage() {
                 </td>
               </tr>
             ))}
+            {rows.length === 0 && (
+              <tr>
+                <td className="px-4 py-10 text-center text-slate-500" colSpan={user?.role === 'ADMIN' ? 8 : 7}>
+                  No hay atenciones en este periodo.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -204,6 +217,12 @@ export function AttendedPage() {
                 <button className="btn-primary" onClick={() => setEditing(true)}>Editar</button>
               )}
             </div>
+
+            {selected.isDayClosed && (
+              <div className="mt-3 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-900">
+                Día cerrado. Solo consulta. Un administrador debe reabrir el día para editar.
+              </div>
+            )}
 
             {!editing ? (
               <div className="mt-4 space-y-2 text-sm">

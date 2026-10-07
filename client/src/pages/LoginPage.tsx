@@ -25,11 +25,11 @@ export function LoginPage() {
   }, []);
 
   if (!loading && user) {
-    return <Navigate to={user.role === 'ADMIN' ? '/admin' : '/agenda'} replace />;
+    return <Navigate to={user.role === 'ADMIN' ? '/admin' : '/hoy'} replace />;
   }
 
   const goHome = (role: string) => {
-    navigate(role === 'ADMIN' ? '/admin' : '/agenda');
+    navigate(role === 'ADMIN' ? '/admin' : '/hoy');
   };
 
   return (

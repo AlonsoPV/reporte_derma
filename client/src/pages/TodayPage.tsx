@@ -3,7 +3,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { Badge } from '../components/Badge';
 import { KpiGrid, money } from '../components/KpiGrid';
-import { formatDisplayDate, shiftDate, todayISO } from '../lib/utils';
+import { formatDisplayDate, todayISO } from '../lib/utils';
 import { AttendModal } from '../components/AttendModal';
 import { WalkInModal } from '../components/WalkInModal';
 import { CloseDayModal } from '../components/CloseDayModal';
@@ -28,7 +28,6 @@ type Attendance = {
   patientName: string;
   treatment: string;
   amount: number | string;
-  paymentMethod: string;
   origin: string;
   doctor?: { name: string };
 };
@@ -51,7 +50,7 @@ type DayData = {
 
 export function TodayPage() {
   const { user } = useAuth();
-  const [date, setDate] = useState(todayISO());
+  const date = todayISO();
   const [data, setData] = useState<DayData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -73,8 +72,8 @@ export function TodayPage() {
   };
 
   useEffect(() => {
-    load();
-  }, [date]);
+    load().catch(console.error);
+  }, []);
 
   const pending = useMemo(
     () => data?.appointments.filter((a) => a.operationalStatus === 'PENDING') || [],
@@ -90,17 +89,9 @@ export function TodayPage() {
             {user?.role !== 'ADMIN' && user?.name ? `${user.name} · ` : ''}
             {formatDisplayDate(date)}
           </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button className="btn-secondary" onClick={() => setDate((d) => shiftDate(d, -1))}>
-            ← Anterior
-          </button>
-          <button className="btn-secondary" onClick={() => setDate(todayISO())}>
-            HOY
-          </button>
-          <button className="btn-secondary" onClick={() => setDate((d) => shiftDate(d, 1))}>
-            Siguiente →
-          </button>
+          <p className="mt-1 text-sm text-slate-500">
+            Solo para atender a los pacientes de hoy. El histórico está en Atendidos.
+          </p>
         </div>
       </div>
 
@@ -175,14 +166,15 @@ export function TodayPage() {
             </div>
           ))}
           {!loading && data?.appointments.length === 0 && (
-            <div className="px-5 py-10 text-center text-slate-500">No hay citas para este día.</div>
+            <div className="px-5 py-10 text-center text-slate-500">No hay citas para hoy.</div>
           )}
         </div>
       </section>
 
       <section className="card overflow-hidden">
         <div className="border-b border-slate-100 px-5 py-4">
-          <h2 className="text-lg font-semibold">Pacientes atendidos</h2>
+          <h2 className="text-lg font-semibold">Atendidos de hoy</h2>
+          <p className="text-sm text-slate-500">Consulta. Para el histórico de otros días usa Atendidos.</p>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -192,7 +184,6 @@ export function TodayPage() {
                 <th className="px-5 py-3 font-medium">Paciente</th>
                 <th className="px-5 py-3 font-medium">Tratamiento</th>
                 <th className="px-5 py-3 font-medium">Monto</th>
-                <th className="px-5 py-3 font-medium">Pago</th>
                 <th className="px-5 py-3 font-medium">Origen</th>
               </tr>
             </thead>
@@ -203,10 +194,16 @@ export function TodayPage() {
                   <td className="px-5 py-3">{a.patientName}</td>
                   <td className="px-5 py-3">{a.treatment}</td>
                   <td className="px-5 py-3">{money(Number(a.amount))}</td>
-                  <td className="px-5 py-3">{a.paymentMethod}</td>
                   <td className="px-5 py-3">{a.origin === 'WALK_IN' ? 'Sin cita' : 'Agendado'}</td>
                 </tr>
               ))}
+              {!loading && (data?.attendances || []).length === 0 && (
+                <tr>
+                  <td className="px-5 py-10 text-center text-slate-500" colSpan={5}>
+                    Aún no hay pacientes atendidos hoy.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

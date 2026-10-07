@@ -5,6 +5,7 @@ import { LoginPage } from './pages/LoginPage';
 import { AttendedPage } from './pages/AttendedPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { AgendaPage } from './pages/AgendaPage';
+import { TodayPage } from './pages/TodayPage';
 import { ImportPage } from './pages/ImportPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { AdminPage } from './pages/AdminPage';
@@ -16,7 +17,7 @@ function Protected({ roles }: { roles?: string[] }) {
   }
   if (!user) return <Navigate to="/login" replace />;
   if (roles && !roles.includes(user.role)) {
-    return <Navigate to={user.role === 'ADMIN' ? '/admin' : '/agenda'} replace />;
+    return <Navigate to={user.role === 'ADMIN' ? '/admin' : '/hoy'} replace />;
   }
   return <Outlet />;
 }
@@ -29,7 +30,7 @@ export default function App() {
         <Route element={<Protected />}>
           <Route element={<AppLayout />}>
             <Route path="/" element={<HomeRedirect />} />
-            <Route path="/hoy" element={<Navigate to="/agenda" replace />} />
+            <Route path="/hoy" element={<TodayPage />} />
             <Route path="/agenda" element={<AgendaPage />} />
             <Route path="/atendidos" element={<AttendedPage />} />
             <Route path="/reportes" element={<ReportsPage />} />
@@ -48,5 +49,5 @@ export default function App() {
 
 function HomeRedirect() {
   const { user } = useAuth();
-  return <Navigate to={user?.role === 'ADMIN' ? '/admin' : '/agenda'} replace />;
+  return <Navigate to={user?.role === 'ADMIN' ? '/admin' : '/hoy'} replace />;
 }

@@ -389,12 +389,12 @@ router.get('/attendances', requireAuth, async (req, res) => {
           select: { doctorId: true, date: true },
         })
       : [];
-    const closedSet = new Set(closed.map((c) => `${c.doctorId}|${c.date.toISOString().slice(0, 10)}`));
+    const closedSet = new Set(closed.map((c) => `${c.doctorId}|${formatDateOnly(c.date)}`));
 
     res.json({
       attendances: attendances.map((a) => ({
         ...a,
-        isDayClosed: closedSet.has(`${a.doctorId}|${a.attendanceDate.toISOString().slice(0, 10)}`),
+        isDayClosed: closedSet.has(`${a.doctorId}|${formatDateOnly(a.attendanceDate)}`),
       })),
     });
   } catch (e) {
@@ -413,7 +413,7 @@ router.patch('/attendances/:id', requireAuth, async (req, res) => {
 
     await assertDayOpen(existing.doctorId, existing.attendanceDate);
 
-    const { treatment, amount, paymentMethod, notes, patientName, phone, email, actualTime } = req.body;
+    const { treatment, amount, notes, patientName, phone, email, actualTime } = req.body;
 
     if (amount != null && Number(amount) <= 0) {
       return res.status(400).json({ error: 'El monto debe ser mayor a 0' });
@@ -427,7 +427,7 @@ router.patch('/attendances/:id', requireAuth, async (req, res) => {
       data: {
         treatment: treatment != null ? String(treatment).trim() : existing.treatment,
         amount: amount != null ? Number(amount) : existing.amount,
-        paymentMethod: paymentMethod ?? existing.paymentMethod,
+        paymentMethod: existing.paymentMethod,
         notes: notes !== undefined ? notes : existing.notes,
         patientName: patientName != null ? String(patientName).trim() : existing.patientName,
         phone: phone !== undefined ? phone || null : existing.phone,
