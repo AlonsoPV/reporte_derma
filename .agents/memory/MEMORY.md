@@ -1,3 +1,4 @@
 - [Vite/esbuild target compatibility](vite-esbuild-target.md) — use an ESNext target for both build and dependency optimization if esbuild rejects destructuring.
 - [GitHub push authentication](github-push-auth.md) — GitHub App API access does not automatically authenticate Git-over-HTTPS pushes from the shell.
 - [Imported Git history](imported-git-history.md) — Rebase cannot join copied source files with an independent Replit history; merge from the imported source snapshot instead.
+- [Datos demo en producción](production-demo-data.md) — usar carga selectiva explícita; copiar desarrollo completo reemplaza los datos productivos.

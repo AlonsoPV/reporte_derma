@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import { DemoDayLoader } from '../components/DemoDayLoader';
 
 type Tab = 'users' | 'doctors' | 'imports' | 'closures' | 'audit';
 
@@ -74,6 +75,8 @@ export function AdminPage() {
       </div>
 
       {message && <div className="rounded-xl bg-emerald-50 px-4 py-3 text-emerald-800">{message}</div>}
+
+      <DemoDayLoader />
 
       {tab === 'users' && (
         <div className="grid gap-4 lg:grid-cols-2">

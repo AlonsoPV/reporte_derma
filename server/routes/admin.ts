@@ -4,10 +4,26 @@ import { prisma } from '../db';
 import { requireAuth, requireRole, getUser } from '../middleware/auth';
 import { userSchema, doctorSchema, doctorMappingSchema } from '../../shared/schemas';
 import { writeAudit } from '../utils';
+import { DEMO_DATE, seedDemoDay } from '../services/demo-day';
 
 const router = Router();
 
 router.use(requireAuth, requireRole('ADMIN'));
+
+router.post('/demo-day', async (req, res) => {
+  if (req.body?.confirmation !== DEMO_DATE) {
+    return res.status(400).json({ error: 'Confirma la carga demo del 8 de octubre de 2026.' });
+  }
+  try {
+    const result = await seedDemoDay(getUser(req).id);
+    res.json(result);
+  } catch (error) {
+    const status = (error as Error & { status?: number }).status;
+    res.status(status || 500).json({
+      error: status ? (error as Error).message : 'No se pudo completar la carga. No se guardaron cambios parciales.',
+    });
+  }
+});
 
 // Users
 router.get('/users', async (_req, res) => {
