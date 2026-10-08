@@ -1,6 +1,7 @@
 import { prisma } from './db';
 import type { SessionUser } from '../shared/types';
 import type { Prisma } from '@prisma/client';
+import { canSeeAll } from '../shared/constants';
 
 export async function writeAudit(params: {
   userId?: string | null;
@@ -57,7 +58,7 @@ export function nowTimeInMexico(): string {
 }
 
 export function doctorScope(user: SessionUser): string | null {
-  if (user.role === 'ADMIN') return null;
+  if (canSeeAll(user.role)) return null;
   if (!user.doctorId) {
     const err = new Error('Usuario sin médico asociado');
     (err as Error & { status: number }).status = 403;
@@ -67,7 +68,7 @@ export function doctorScope(user: SessionUser): string | null {
 }
 
 export function resolveDoctorFilter(user: SessionUser, requested?: string | null): string | null {
-  if (user.role === 'ADMIN') return requested || null;
+  if (canSeeAll(user.role)) return requested || null;
   return doctorScope(user);
 }
 
@@ -76,7 +77,7 @@ export function requestedDoctorId(user: SessionUser, requested?: string | null):
 }
 
 export function assertDoctorAccess(user: SessionUser, doctorId: string | null | undefined) {
-  if (user.role === 'ADMIN') return;
+  if (canSeeAll(user.role)) return;
   if (!user.doctorId || user.doctorId !== doctorId) {
     const err = new Error('No autorizado para este doctor');
     (err as Error & { status: number }).status = 403;

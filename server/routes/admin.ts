@@ -124,7 +124,6 @@ router.patch('/users/:id', async (req, res) => {
   }
 });
 
-// Doctors
 router.get('/doctors', async (_req, res) => {
   const doctors = await prisma.doctor.findMany({
     include: { user: true, nameMappings: true },

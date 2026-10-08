@@ -25,6 +25,15 @@ export function requireRole(...roles: string[]) {
   };
 }
 
+export function rejectWritesIfReadOnly(req: Request, res: Response, next: NextFunction) {
+  const user = req.session.user;
+  if (!user || user.role !== 'RECEPTION') return next();
+  const method = req.method.toUpperCase();
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return next();
+  if (req.path === '/auth/logout' || req.path.endsWith('/logout')) return next();
+  return res.status(403).json({ error: 'Recepción es solo consulta. No se permiten cambios.' });
+}
+
 export function getUser(req: Request): SessionUser {
   if (!req.session.user) {
     throw Object.assign(new Error('No autenticado'), { status: 401 });

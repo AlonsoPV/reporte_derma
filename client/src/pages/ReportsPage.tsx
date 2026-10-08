@@ -13,7 +13,7 @@ import { useAuth } from '../auth/AuthContext';
 import { KpiGrid, money } from '../components/KpiGrid';
 import { DateQuickFilters } from '../components/DateQuickFilters';
 import { todayISO } from '../lib/utils';
-import { ATTENDANCE_ORIGINS, ORIGIN_LABELS } from '@shared/constants';
+import { ATTENDANCE_ORIGINS, ORIGIN_LABELS, canSeeAll } from '@shared/constants';
 
 type Report = {
   summary: {
@@ -46,6 +46,7 @@ type Report = {
 
 export function ReportsPage() {
   const { user } = useAuth();
+  const seesAll = canSeeAll(user?.role);
   const [from, setFrom] = useState(todayISO());
   const [to, setTo] = useState(todayISO());
   const [doctorId, setDoctorId] = useState('');
@@ -55,14 +56,14 @@ export function ReportsPage() {
   const [report, setReport] = useState<Report | null>(null);
 
   useEffect(() => {
-    if (user?.role === 'ADMIN') {
-      api.get<{ doctors: Array<{ id: string; name: string }> }>('/api/admin/doctors').then((r) => setDoctors(r.doctors));
+    if (seesAll) {
+      api.get<{ doctors: Array<{ id: string; name: string }> }>('/api/doctors').then((r) => setDoctors(r.doctors));
     }
-  }, [user?.role]);
+  }, [seesAll]);
 
   const load = async () => {
     const params = new URLSearchParams({ from, to });
-    if (user?.role === 'ADMIN' && doctorId) params.set('doctorId', doctorId);
+    if (seesAll && doctorId) params.set('doctorId', doctorId);
     if (treatment) params.set('treatment', treatment);
     if (origin) params.set('origin', origin);
     const data = await api.get<Report>(`/api/reports/summary?${params}`);
@@ -75,7 +76,7 @@ export function ReportsPage() {
 
   const exportExcel = async () => {
     const params = new URLSearchParams({ from, to });
-    if (user?.role === 'ADMIN' && doctorId) params.set('doctorId', doctorId);
+    if (seesAll && doctorId) params.set('doctorId', doctorId);
     if (treatment) params.set('treatment', treatment);
     if (origin) params.set('origin', origin);
     const res = await fetch(`/api/reports/export?${params}`, { credentials: 'include' });
@@ -98,7 +99,7 @@ export function ReportsPage() {
         <div>
           <h1 className="font-display text-3xl font-semibold">Reportes</h1>
           <p className="text-slate-600">
-            {user?.role === 'ADMIN'
+            {seesAll
               ? 'Resumen de toda la operación y detalle exportable'
               : 'Solo tu resumen y detalle exportable'}
           </p>
@@ -127,7 +128,7 @@ export function ReportsPage() {
             <label className="label">Hasta</label>
             <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
-          {user?.role === 'ADMIN' && (
+          {seesAll && (
             <div>
               <label className="label">Doctor</label>
               <select className="input" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
@@ -178,8 +179,8 @@ export function ReportsPage() {
               </div>
           </div>
 
-          <div className={`grid gap-4 ${user?.role === 'ADMIN' ? 'lg:grid-cols-2' : ''}`}>
-            {user?.role === 'ADMIN' && (
+          <div className={`grid gap-4 ${seesAll ? 'lg:grid-cols-2' : ''}`}>
+            {seesAll && (
             <div className="card p-4">
               <h3 className="mb-3 font-semibold">Ingresos por doctor</h3>
               <div className="space-y-2 text-sm">
@@ -213,7 +214,7 @@ export function ReportsPage() {
                   <th className="px-4 py-3">Fecha</th>
                   <th className="px-4 py-3">Hora</th>
                   <th className="px-4 py-3">Paciente</th>
-                  {user?.role === 'ADMIN' && <th className="px-4 py-3">Doctor</th>}
+                  {seesAll && <th className="px-4 py-3">Doctor</th>}
                   <th className="px-4 py-3">Tratamiento</th>
                   <th className="px-4 py-3">Monto</th>
                   <th className="px-4 py-3">Origen</th>
@@ -225,7 +226,7 @@ export function ReportsPage() {
                     <td className="px-4 py-3">{r.date}</td>
                     <td className="px-4 py-3">{r.time}</td>
                     <td className="px-4 py-3">{r.patientName}</td>
-                    {user?.role === 'ADMIN' && <td className="px-4 py-3">{r.doctor}</td>}
+                    {seesAll && <td className="px-4 py-3">{r.doctor}</td>}
                     <td className="px-4 py-3">{r.treatment}</td>
                     <td className="px-4 py-3">{money(r.amount)}</td>
                     <td className="px-4 py-3">{r.originLabel}</td>

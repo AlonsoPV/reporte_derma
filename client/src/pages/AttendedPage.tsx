@@ -5,7 +5,7 @@ import { Badge } from '../components/Badge';
 import { money } from '../components/KpiGrid';
 import { DateQuickFilters } from '../components/DateQuickFilters';
 import { resolveDatePreset } from '../lib/utils';
-import { ORIGIN_LABELS } from '@shared/constants';
+import { canSeeAll, isReadOnlyRole, ORIGIN_LABELS } from '@shared/constants';
 
 type Attendance = {
   id: string;
@@ -24,6 +24,8 @@ type Attendance = {
 
 export function AttendedPage() {
   const { user } = useAuth();
+  const seesAll = canSeeAll(user?.role);
+  const canEdit = !isReadOnlyRole(user?.role);
   const initialRange = resolveDatePreset('week');
   const [from, setFrom] = useState(initialRange.from);
   const [to, setTo] = useState(initialRange.to);
@@ -46,15 +48,15 @@ export function AttendedPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (user?.role === 'ADMIN') {
-      api.get<{ doctors: Array<{ id: string; name: string }> }>('/api/admin/doctors').then((r) => setDoctors(r.doctors));
+    if (seesAll) {
+      api.get<{ doctors: Array<{ id: string; name: string }> }>('/api/doctors').then((r) => setDoctors(r.doctors));
     }
-  }, [user?.role]);
+  }, [seesAll]);
 
   const load = async () => {
     const params = new URLSearchParams({ from, to });
     if (q) params.set('q', q);
-    if (user?.role === 'ADMIN' && doctorId) params.set('doctorId', doctorId);
+    if (seesAll && doctorId) params.set('doctorId', doctorId);
     const data = await api.get<{ attendances: Attendance[] }>(`/api/attendances?${params}`);
     setRows(data.attendances);
   };
@@ -65,7 +67,7 @@ export function AttendedPage() {
 
   const openDetail = (r: Attendance, startEditing = false) => {
     setSelected(r);
-    setEditing(startEditing && !r.isDayClosed);
+    setEditing(canEdit && startEditing && !r.isDayClosed);
     setError('');
     setForm({
       patientName: r.patientName,
@@ -116,8 +118,10 @@ export function AttendedPage() {
       <div>
         <h1 className="font-display text-3xl font-semibold">Pacientes atendidos</h1>
         <p className="text-slate-600">
-          {user?.role === 'ADMIN'
-            ? 'Histórico de toda la operación. Los días cerrados solo se consultan.'
+          {seesAll
+            ? canEdit
+              ? 'Histórico de toda la operación. Los días cerrados solo se consultan.'
+              : 'Histórico de toda la operación. Solo consulta, sin editar.'
             : 'Solo tu histórico de atenciones. Los días cerrados no se pueden editar.'}
         </p>
       </div>
@@ -140,7 +144,7 @@ export function AttendedPage() {
             <label className="label">Hasta</label>
             <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
-          {user?.role === 'ADMIN' && (
+          {seesAll && (
             <div>
               <label className="label">Doctor</label>
               <select className="input" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
@@ -149,7 +153,7 @@ export function AttendedPage() {
               </select>
             </div>
           )}
-          <div className={user?.role === 'ADMIN' ? '' : 'md:col-span-2'}>
+          <div className={seesAll ? '' : 'md:col-span-2'}>
             <label className="label">Buscar</label>
             <input className="input" placeholder="Nombre, teléfono, tratamiento" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
@@ -168,7 +172,7 @@ export function AttendedPage() {
               <th className="px-4 py-3">Paciente</th>
               <th className="px-4 py-3">Tratamiento</th>
               <th className="px-4 py-3">Monto</th>
-              {user?.role === 'ADMIN' && <th className="px-4 py-3">Doctor</th>}
+              {seesAll && <th className="px-4 py-3">Doctor</th>}
               <th className="px-4 py-3">Origen</th>
               <th className="px-4 py-3"></th>
             </tr>
@@ -181,23 +185,23 @@ export function AttendedPage() {
                 <td className="px-4 py-3 font-medium">{r.patientName}</td>
                 <td className="px-4 py-3">{r.treatment}</td>
                 <td className="px-4 py-3">{money(Number(r.amount))}</td>
-                {user?.role === 'ADMIN' && <td className="px-4 py-3">{r.doctor?.name}</td>}
+                {seesAll && <td className="px-4 py-3">{r.doctor?.name}</td>}
                 <td className="px-4 py-3"><Badge status={r.origin === 'WALK_IN' ? 'RESCHEDULED' : 'ATTENDED'} label={ORIGIN_LABELS[r.origin]} /></td>
                 <td className="px-4 py-3">
                   <div className="flex gap-1">
                     <button className="btn-ghost" onClick={() => openDetail(r, false)}>Ver</button>
                     {r.isDayClosed ? (
                       <span className="self-center text-xs font-semibold text-brand-700">Cerrado</span>
-                    ) : (
+                    ) : canEdit ? (
                       <button className="btn-secondary" onClick={() => openDetail(r, true)}>Editar</button>
-                    )}
+                    ) : null}
                   </div>
                 </td>
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td className="px-4 py-10 text-center text-slate-500" colSpan={user?.role === 'ADMIN' ? 8 : 7}>
+                <td className="px-4 py-10 text-center text-slate-500" colSpan={seesAll ? 8 : 7}>
                   No hay atenciones en este periodo.
                 </td>
               </tr>
@@ -213,7 +217,7 @@ export function AttendedPage() {
               <h2 className="font-display text-2xl font-semibold">
                 {editing ? 'Editar atención' : selected.patientName}
               </h2>
-              {!editing && !selected.isDayClosed && (
+              {canEdit && !editing && !selected.isDayClosed && (
                 <button className="btn-primary" onClick={() => setEditing(true)}>Editar</button>
               )}
             </div>

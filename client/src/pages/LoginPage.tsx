@@ -3,8 +3,9 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { api } from '../lib/api';
 import { cn } from '../lib/utils';
+import { homePathForRole } from '@shared/constants';
 
-type LoginMode = 'doctor' | 'admin';
+type LoginMode = 'doctor' | 'admin' | 'reception';
 
 export function LoginPage() {
   const { user, login, loading } = useAuth();
@@ -25,11 +26,11 @@ export function LoginPage() {
   }, []);
 
   if (!loading && user) {
-    return <Navigate to={user.role === 'ADMIN' ? '/admin' : '/hoy'} replace />;
+    return <Navigate to={homePathForRole(user.role)} replace />;
   }
 
   const goHome = (role: string) => {
-    navigate(role === 'ADMIN' ? '/admin' : '/hoy');
+    navigate(homePathForRole(role));
   };
 
   return (
@@ -40,24 +41,33 @@ export function LoginPage() {
           <p className="mt-2 text-slate-600">
             {mode === 'admin'
               ? 'El administrador ve toda la operación: agenda, atenciones, reportes e importación.'
-              : 'El médico entra con su cuenta y contraseña. Solo ve su propia información.'}
+              : mode === 'reception'
+                ? 'Recepción ve toda la operación. Solo consulta, no puede editar ni cerrar días.'
+                : 'El médico entra con su cuenta y contraseña. Solo ve su propia información.'}
           </p>
         </div>
 
-        <div className="mb-6 grid grid-cols-2 rounded-xl bg-slate-100 p-1">
+        <div className="mb-6 grid grid-cols-3 rounded-xl bg-slate-100 p-1">
           <button
             type="button"
-            className={cn('rounded-lg px-3 py-2 text-sm font-semibold', mode === 'doctor' ? 'bg-white text-brand-800 shadow-sm' : 'text-slate-500')}
+            className={cn('rounded-lg px-2 py-2 text-sm font-semibold', mode === 'doctor' ? 'bg-white text-brand-800 shadow-sm' : 'text-slate-500')}
             onClick={() => { setMode('doctor'); setError(''); setPassword(''); }}
           >
             Médico
           </button>
           <button
             type="button"
-            className={cn('rounded-lg px-3 py-2 text-sm font-semibold', mode === 'admin' ? 'bg-white text-brand-800 shadow-sm' : 'text-slate-500')}
-            onClick={() => { setMode('admin'); setError(''); setPassword(''); }}
+            className={cn('rounded-lg px-2 py-2 text-sm font-semibold', mode === 'reception' ? 'bg-white text-brand-800 shadow-sm' : 'text-slate-500')}
+            onClick={() => { setMode('reception'); setError(''); setPassword(''); setEmail('recepcion@clinicademo.local'); }}
           >
-            Administrador
+            Recepción
+          </button>
+          <button
+            type="button"
+            className={cn('rounded-lg px-2 py-2 text-sm font-semibold', mode === 'admin' ? 'bg-white text-brand-800 shadow-sm' : 'text-slate-500')}
+            onClick={() => { setMode('admin'); setError(''); setPassword(''); setEmail('admin@clinicademo.local'); }}
+          >
+            Admin
           </button>
         </div>
 
@@ -83,7 +93,10 @@ export function LoginPage() {
             </div>
           ) : (
             <p className="mt-2">
-              Correo: <code className="break-all font-semibold">admin@clinicademo.local</code>
+              Correo:{' '}
+              <code className="break-all font-semibold">
+                {mode === 'reception' ? 'recepcion@clinicademo.local' : 'admin@clinicademo.local'}
+              </code>
             </p>
           )}
           <p className="mt-3">Contraseña demo: <code className="font-semibold">Demo123!</code></p>

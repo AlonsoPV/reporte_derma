@@ -4,6 +4,8 @@ import { KpiGrid, money } from '../components/KpiGrid';
 import { Badge } from '../components/Badge';
 import { todayISO, shiftDate, formatDisplayDate } from '../lib/utils';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../auth/AuthContext';
+import { isReadOnlyRole } from '@shared/constants';
 
 type AdminDash = {
   date: string;
@@ -28,6 +30,8 @@ type AdminDash = {
 };
 
 export function AdminDashboardPage() {
+  const { user } = useAuth();
+  const canEdit = !isReadOnlyRole(user?.role);
   const [date, setDate] = useState(todayISO());
   const [data, setData] = useState<AdminDash | null>(null);
   const [reopenId, setReopenId] = useState<string | null>(null);
@@ -104,7 +108,7 @@ export function AdminDashboardPage() {
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
                       <Link className="btn-ghost" to={`/agenda?doctorId=${row.doctor.id}&date=${date}`}>Detalle</Link>
-                      {row.closureStatus === 'CLOSED' && row.closureId && (
+                      {canEdit && row.closureStatus === 'CLOSED' && row.closureId && (
                         <button className="btn-secondary" onClick={() => setReopenId(row.closureId)}>Reabrir</button>
                       )}
                     </div>

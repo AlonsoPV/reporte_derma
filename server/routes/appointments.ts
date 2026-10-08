@@ -12,9 +12,26 @@ import {
   writeAudit,
 } from '../utils';
 import { attendSchema, walkInSchema, classifyAppointmentSchema } from '../../shared/schemas';
+import { canSeeAll } from '../../shared/constants';
 import type { OperationalStatus } from '@prisma/client';
 
 const router = Router();
+
+router.get('/doctors', requireAuth, async (req, res) => {
+  try {
+    const user = getUser(req);
+    if (!canSeeAll(user.role)) return res.status(403).json({ error: 'Sin permiso' });
+    const doctors = await prisma.doctor.findMany({
+      where: { active: true },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+    res.json({ doctors });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Error al cargar médicos' });
+  }
+});
 
 router.get('/day', requireAuth, async (req, res) => {
   try {
@@ -244,7 +261,7 @@ router.post('/walk-in', requireAuth, async (req, res) => {
 
     const data = parsed.data;
     let doctorId = user.doctorId;
-    if (user.role === 'ADMIN') {
+    if (canSeeAll(user.role)) {
       doctorId = data.doctorId || null;
     }
     if (!doctorId) {

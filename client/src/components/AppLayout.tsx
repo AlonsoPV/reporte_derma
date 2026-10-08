@@ -1,9 +1,17 @@
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { cn } from '../lib/utils';
+import { homePathForRole, isReadOnlyRole } from '@shared/constants';
 
 const doctorLinks = [
   { to: '/hoy', label: 'Hoy' },
+  { to: '/atendidos', label: 'Atendidos' },
+  { to: '/reportes', label: 'Reportes' },
+];
+
+const receptionLinks = [
+  { to: '/admin', label: 'Dashboard' },
+  { to: '/agenda', label: 'Agenda' },
   { to: '/atendidos', label: 'Atendidos' },
   { to: '/reportes', label: 'Reportes' },
 ];
@@ -17,17 +25,23 @@ const adminLinks = [
   { to: '/administracion', label: 'Administración' },
 ];
 
+function roleCaption(role?: string) {
+  if (role === 'ADMIN') return 'Administrador · toda la operación';
+  if (isReadOnlyRole(role)) return 'Recepción · consulta, sin editar';
+  return 'Médico · solo tu información';
+}
+
 export function AppLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const links = user?.role === 'ADMIN' ? adminLinks : doctorLinks;
+  const links = user?.role === 'ADMIN' ? adminLinks : isReadOnlyRole(user?.role) ? receptionLinks : doctorLinks;
 
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-40 border-b border-white/70 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3">
           <div className="flex items-center gap-6">
-            <Link to={user?.role === 'ADMIN' ? '/admin' : '/hoy'} className="font-display text-xl font-semibold text-brand-800">
+            <Link to={homePathForRole(user?.role)} className="font-display text-xl font-semibold text-brand-800">
               DermaOps
             </Link>
             <nav className="hidden items-center gap-1 md:flex">
@@ -51,7 +65,7 @@ export function AppLayout() {
             <div className="text-right">
               <div className="text-sm font-semibold">{user?.name}</div>
               <div className="text-xs text-slate-500">
-                {user?.role === 'ADMIN' ? 'Administrador · toda la operación' : 'Médico · solo tu información'}
+                {roleCaption(user?.role)}
               </div>
             </div>
             <button
@@ -83,6 +97,11 @@ export function AppLayout() {
         </nav>
       </header>
       <main className="mx-auto max-w-7xl px-4 py-6">
+        {isReadOnlyRole(user?.role) && (
+          <div className="mb-6 rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900">
+            Cuenta de recepción: puedes ver toda la operación. No se permiten cambios.
+          </div>
+        )}
         <Outlet />
       </main>
     </div>

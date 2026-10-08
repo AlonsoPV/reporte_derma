@@ -1,6 +1,18 @@
 export const ROLES = ['ADMIN', 'DOCTOR', 'RECEPTION', 'SUPERVISOR', 'ACCOUNTING'] as const;
 export type Role = (typeof ROLES)[number];
 
+export function canSeeAll(role?: string | null) {
+  return role === 'ADMIN' || role === 'RECEPTION';
+}
+
+export function isReadOnlyRole(role?: string | null) {
+  return role === 'RECEPTION';
+}
+
+export function homePathForRole(role?: string | null) {
+  return canSeeAll(role) ? '/admin' : '/hoy';
+}
+
 export const OPERATIONAL_STATUSES = [
   'PENDING',
   'ATTENDED',

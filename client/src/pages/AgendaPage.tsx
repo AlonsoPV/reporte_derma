@@ -8,7 +8,7 @@ import { CloseDayModal } from '../components/CloseDayModal';
 import { money } from '../components/KpiGrid';
 import { formatDisplayDate, todayISO } from '../lib/utils';
 import { useAuth } from '../auth/AuthContext';
-import { ORIGIN_LABELS } from '@shared/constants';
+import { canSeeAll, isReadOnlyRole, ORIGIN_LABELS } from '@shared/constants';
 
 type Appointment = {
   id: string;
@@ -47,10 +47,11 @@ type DayData = {
 
 export function AgendaPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'ADMIN';
+  const seesAll = canSeeAll(user?.role);
+  const canEdit = !isReadOnlyRole(user?.role);
   const date = todayISO();
   const [searchParams] = useSearchParams();
-  const [doctorId, setDoctorId] = useState(isAdmin ? searchParams.get('doctorId') || '' : '');
+  const [doctorId, setDoctorId] = useState(seesAll ? searchParams.get('doctorId') || '' : '');
   const [q, setQ] = useState('');
   const [doctors, setDoctors] = useState<Array<{ id: string; name: string }>>([]);
   const [data, setData] = useState<DayData | null>(null);
@@ -60,22 +61,22 @@ export function AgendaPage() {
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
 
-  const closeDoctorId = isAdmin ? doctorId : user?.doctorId || '';
-  const canClose = Boolean(closeDoctorId);
+  const closeDoctorId = seesAll ? doctorId : user?.doctorId || '';
+  const canClose = canEdit && Boolean(closeDoctorId);
   const dayLocked = Boolean(data?.isClosed);
 
   useEffect(() => {
-    if (user?.role === 'ADMIN') {
-      api.get<{ doctors: Array<{ id: string; name: string }> }>('/api/admin/doctors').then((r) => setDoctors(r.doctors));
+    if (seesAll) {
+      api.get<{ doctors: Array<{ id: string; name: string }> }>('/api/doctors').then((r) => setDoctors(r.doctors));
     }
-  }, [user?.role]);
+  }, [seesAll]);
 
   const load = async () => {
     setLoading(true);
     setError('');
     try {
       const qs = new URLSearchParams({ date });
-      if (user?.role === 'ADMIN' && doctorId) qs.set('doctorId', doctorId);
+      if (seesAll && doctorId) qs.set('doctorId', doctorId);
       const res = await api.get<DayData>(`/api/day?${qs}`);
       setData(res);
     } catch (e) {
@@ -113,13 +114,13 @@ export function AgendaPage() {
         <div>
           <h1 className="font-display text-3xl font-semibold">Tablero para el día de hoy</h1>
           <p className="capitalize text-slate-600">
-            {isAdmin
+            {seesAll
               ? `Toda la operación · ${formatDisplayDate(date)}`
               : `${user?.name || 'Tu agenda'} · ${formatDisplayDate(date)}`}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {isAdmin && (
+          {seesAll && (
             <select
               className="input w-auto min-w-[200px]"
               value={doctorId}
@@ -138,21 +139,25 @@ export function AgendaPage() {
             onChange={(e) => setQ(e.target.value)}
             placeholder="Buscar paciente…"
           />
-          <button
-            className="btn-primary"
-            disabled={dayLocked}
-            onClick={() => setWalkInOpen(true)}
-          >
-            + Paciente nuevo
-          </button>
-          <button
-            className="btn-danger"
-            disabled={!canClose || dayLocked}
-            title={!canClose ? 'Selecciona un doctor para cerrar el día' : undefined}
-            onClick={() => setCloseOpen(true)}
-          >
-            {dayLocked ? 'Día cerrado' : 'Cerrar día'}
-          </button>
+          {canEdit && (
+            <>
+              <button
+                className="btn-primary"
+                disabled={dayLocked}
+                onClick={() => setWalkInOpen(true)}
+              >
+                + Paciente nuevo
+              </button>
+              <button
+                className="btn-danger"
+                disabled={!canClose || dayLocked}
+                title={!canClose ? 'Selecciona un doctor para cerrar el día' : undefined}
+                onClick={() => setCloseOpen(true)}
+              >
+                {dayLocked ? 'Día cerrado' : 'Cerrar día'}
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -161,7 +166,7 @@ export function AgendaPage() {
           <strong>Día cerrado.</strong> No se permiten más cambios. Un administrador debe reabrir el día para editar.
         </div>
       )}
-      {isAdmin && !doctorId && (
+      {canEdit && seesAll && !doctorId && (
         <p className="text-sm text-slate-500">Selecciona un doctor para cerrar su día.</p>
       )}
 
@@ -185,7 +190,7 @@ export function AgendaPage() {
                 <th className="px-4 py-3">Hora</th>
                 <th className="px-4 py-3">Paciente</th>
                 <th className="px-4 py-3">Teléfono</th>
-                {user?.role === 'ADMIN' && <th className="px-4 py-3">Doctor</th>}
+                {seesAll && <th className="px-4 py-3">Doctor</th>}
                 <th className="px-4 py-3">Estado</th>
                 <th className="px-4 py-3">Asistencia</th>
                 <th className="px-4 py-3">Notas</th>
@@ -195,7 +200,7 @@ export function AgendaPage() {
             <tbody>
               {scheduled.map((r) => {
                 const locked = data?.closedDoctorIds?.includes(r.doctorId || '') || data?.isClosed;
-                const canAttend = r.operationalStatus === 'PENDING' && !locked;
+                const canAttend = canEdit && r.operationalStatus === 'PENDING' && !locked;
                 return (
                 <tr
                   key={r.id}
@@ -207,12 +212,12 @@ export function AgendaPage() {
                   <td className="px-4 py-3 font-semibold tabular-nums text-brand-800">{r.startTime}</td>
                   <td className="px-4 py-3 font-medium">{r.patientName}</td>
                   <td className="px-4 py-3">{r.phone || '—'}</td>
-                  {user?.role === 'ADMIN' && <td className="px-4 py-3">{r.doctor?.name || 'Sin mapear'}</td>}
+                  {seesAll && <td className="px-4 py-3">{r.doctor?.name || 'Sin mapear'}</td>}
                   <td className="px-4 py-3"><Badge status={r.operationalStatus} /></td>
                   <td className="px-4 py-3">{r.attendanceConfirmation || '—'}</td>
                   <td className="max-w-[220px] truncate px-4 py-3 text-slate-500">{r.notes || '—'}</td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                    {r.operationalStatus === 'PENDING' ? (
+                    {canEdit && r.operationalStatus === 'PENDING' ? (
                       locked ? (
                         <span className="text-xs font-semibold text-brand-700">Cerrado</span>
                       ) : (
@@ -249,13 +254,15 @@ export function AgendaPage() {
             <span className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-emerald-800">
               {attended.length}
             </span>
-            <button
-              className="btn-primary"
-              disabled={dayLocked}
-              onClick={() => setWalkInOpen(true)}
-            >
-              + Paciente nuevo
-            </button>
+            {canEdit && (
+              <button
+                className="btn-primary"
+                disabled={dayLocked}
+                onClick={() => setWalkInOpen(true)}
+              >
+                + Paciente nuevo
+              </button>
+            )}
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -266,7 +273,7 @@ export function AgendaPage() {
                 <th className="px-4 py-3">Paciente</th>
                 <th className="px-4 py-3">Procedimiento</th>
                 <th className="px-4 py-3">Monto</th>
-                {user?.role === 'ADMIN' && <th className="px-4 py-3">Doctor</th>}
+                {seesAll && <th className="px-4 py-3">Doctor</th>}
                 <th className="px-4 py-3">Origen</th>
                 <th className="px-4 py-3">Notas</th>
               </tr>
@@ -278,7 +285,7 @@ export function AgendaPage() {
                   <td className="px-4 py-3 font-medium">{a.patientName}</td>
                   <td className="px-4 py-3">{a.treatment}</td>
                   <td className="px-4 py-3">{money(Number(a.amount))}</td>
-                  {user?.role === 'ADMIN' && <td className="px-4 py-3">{a.doctor?.name}</td>}
+                  {seesAll && <td className="px-4 py-3">{a.doctor?.name}</td>}
                   <td className="px-4 py-3">{ORIGIN_LABELS[a.origin]}</td>
                   <td className="max-w-[220px] truncate px-4 py-3 text-slate-500">{a.notes || '—'}</td>
                 </tr>
@@ -296,7 +303,7 @@ export function AgendaPage() {
         </div>
       </section>
 
-      {selected && (
+      {canEdit && selected && (
         <AttendModal
           appointment={selected}
           onClose={() => setSelected(null)}
@@ -306,7 +313,7 @@ export function AgendaPage() {
           }}
         />
       )}
-      {walkInOpen && (
+      {canEdit && walkInOpen && (
         <WalkInModal
           date={date}
           initialDoctorId={doctorId || undefined}
@@ -317,7 +324,7 @@ export function AgendaPage() {
           }}
         />
       )}
-      {closeOpen && (
+      {canEdit && closeOpen && (
         <CloseDayModal
           date={date}
           doctorId={closeDoctorId}

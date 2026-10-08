@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { Badge } from '../components/Badge';
 import { KpiGrid, money } from '../components/KpiGrid';
 import { formatDisplayDate, todayISO } from '../lib/utils';
+import { canSeeAll, isReadOnlyRole } from '@shared/constants';
 import { AttendModal } from '../components/AttendModal';
 import { WalkInModal } from '../components/WalkInModal';
 import { CloseDayModal } from '../components/CloseDayModal';
@@ -50,6 +51,7 @@ type DayData = {
 
 export function TodayPage() {
   const { user } = useAuth();
+  const canEdit = !isReadOnlyRole(user?.role);
   const date = todayISO();
   const [data, setData] = useState<DayData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,11 +88,13 @@ export function TodayPage() {
         <div>
           <h1 className="font-display text-3xl font-semibold">Hoy</h1>
           <p className="text-slate-600 capitalize">
-            {user?.role !== 'ADMIN' && user?.name ? `${user.name} · ` : ''}
+            {!canSeeAll(user?.role) && user?.name ? `${user.name} · ` : ''}
             {formatDisplayDate(date)}
           </p>
           <p className="mt-1 text-sm text-slate-500">
-            Solo para atender a los pacientes de hoy. El histórico está en Atendidos.
+            {canEdit
+              ? 'Solo para atender a los pacientes de hoy. El histórico está en Atendidos.'
+              : 'Consulta de los pacientes de hoy. El histórico está en Atendidos.'}
           </p>
         </div>
       </div>
@@ -107,14 +111,16 @@ export function TodayPage() {
         />
       )}
 
-      <div className="flex flex-wrap gap-2">
-        <button className="btn-primary" onClick={() => setWalkInOpen(true)} disabled={data?.isClosed}>
-          + Paciente sin cita
-        </button>
-        <button className="btn-danger" onClick={() => setCloseOpen(true)} disabled={data?.isClosed}>
-          {data?.isClosed ? 'Día cerrado' : 'Cerrar día'}
-        </button>
-      </div>
+      {canEdit && (
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-primary" onClick={() => setWalkInOpen(true)} disabled={data?.isClosed}>
+            + Paciente sin cita
+          </button>
+          <button className="btn-danger" onClick={() => setCloseOpen(true)} disabled={data?.isClosed}>
+            {data?.isClosed ? 'Día cerrado' : 'Cerrar día'}
+          </button>
+        </div>
+      )}
 
       {data?.isClosed && (
         <div className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-brand-900">
@@ -151,7 +157,7 @@ export function TodayPage() {
                 {appt.notes ? `Notas: ${appt.notes}` : 'Sin notas'}
               </div>
               <div>
-                {appt.operationalStatus === 'PENDING' ? (
+                {canEdit && appt.operationalStatus === 'PENDING' ? (
                   <button
                     className="btn-primary"
                     disabled={data?.isClosed}
@@ -209,7 +215,7 @@ export function TodayPage() {
         </div>
       </section>
 
-      {selected && (
+      {canEdit && selected && (
         <AttendModal
           appointment={selected}
           onClose={() => setSelected(null)}
@@ -220,7 +226,7 @@ export function TodayPage() {
         />
       )}
 
-      {walkInOpen && (
+      {canEdit && walkInOpen && (
         <WalkInModal
           date={date}
           onClose={() => setWalkInOpen(false)}
@@ -231,7 +237,7 @@ export function TodayPage() {
         />
       )}
 
-      {closeOpen && data && (
+      {canEdit && closeOpen && data && (
         <CloseDayModal
           date={date}
           doctorId={user?.doctorId}

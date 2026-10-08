@@ -15,6 +15,7 @@ import importRoutes from './routes/imports';
 import closureRoutes from './routes/closures';
 import reportRoutes from './routes/reports';
 import adminRoutes from './routes/admin';
+import { rejectWritesIfReadOnly } from './middleware/auth';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
@@ -55,6 +56,7 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
 
+app.use('/api', rejectWritesIfReadOnly);
 app.use('/api/auth', authRoutes);
 app.use('/api', appointmentRoutes);
 app.use('/api/imports', importRoutes);

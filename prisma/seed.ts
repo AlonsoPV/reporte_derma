@@ -58,6 +58,16 @@ async function main() {
     },
   });
 
+  await prisma.user.create({
+    data: {
+      name: 'Recepción Demo',
+      email: 'recepcion@clinicademo.local',
+      passwordHash,
+      role: 'RECEPTION',
+      status: 'ACTIVE',
+    },
+  });
+
   const userBerenice = await prisma.user.create({
     data: {
       name: 'Dra. Berenice Gomez',
@@ -332,6 +342,7 @@ async function main() {
 
   console.log('Seed complete.');
   console.log('Admin: admin@clinicademo.local / Demo123!');
+  console.log('Recepción: recepcion@clinicademo.local / Demo123!');
   console.log('Doctor: berenice@clinicademo.local / Demo123!');
   console.log('Doctor: carlos@clinicademo.local / Demo123!');
   console.log('Doctor: ana@clinicademo.local / Demo123!');

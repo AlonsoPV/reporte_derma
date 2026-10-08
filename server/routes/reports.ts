@@ -3,6 +3,7 @@ import ExcelJS from 'exceljs';
 import { prisma } from '../db';
 import { requireAuth, getUser } from '../middleware/auth';
 import { parseDateOnly, resolveDoctorFilter, toNumber, todayInMexico } from '../utils';
+import { canSeeAll } from '../../shared/constants';
 import { PAYMENT_LABELS, ORIGIN_LABELS, STATUS_LABELS } from '../../shared/constants';
 
 const router = Router();
@@ -10,7 +11,7 @@ const router = Router();
 router.get('/dashboard-admin', requireAuth, async (req, res) => {
   try {
     const user = getUser(req);
-    if (user.role !== 'ADMIN') return res.status(403).json({ error: 'Sin permiso' });
+    if (!canSeeAll(user.role)) return res.status(403).json({ error: 'Sin permiso' });
 
     const dateStr = (req.query.date as string) || todayInMexico();
     const date = parseDateOnly(dateStr);
