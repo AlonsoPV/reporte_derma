@@ -332,7 +332,12 @@ export function AdminPage() {
       )}
 
       {editingUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setEditingUser(null);
+          }}
+        >
           <div className="card w-full max-w-md space-y-3 p-6">
             <h3 className="font-display text-xl font-semibold">Editar usuario</h3>
             <input className="input" value={editUserForm.name} onChange={(e) => setEditUserForm({ ...editUserForm, name: e.target.value })} placeholder="Nombre" />
@@ -380,7 +385,12 @@ export function AdminPage() {
       )}
 
       {editingDoctor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setEditingDoctor(null);
+          }}
+        >
           <div className="card w-full max-w-md space-y-3 p-6">
             <h3 className="font-display text-xl font-semibold">Editar doctor</h3>
             <input className="input" value={editDoctorName} onChange={(e) => setEditDoctorName(e.target.value)} />

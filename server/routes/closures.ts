@@ -19,7 +19,9 @@ async function buildDaySnapshot(doctorId: string, date: Date) {
     prisma.attendance.findMany({ where: { doctorId, attendanceDate: date } }),
   ]);
 
-  const pending = appointments.filter((a) => a.operationalStatus === 'PENDING');
+  const pending = appointments.filter(
+    (a) => a.operationalStatus !== 'ATTENDED' && !a.noShowReason
+  );
   const treatments: Record<string, number> = {};
   const amounts: Record<PaymentMethod, number> = {
     CASH: 0,
@@ -100,7 +102,7 @@ router.post('/close', requireAuth, async (req, res) => {
 
     if (pending.length > 0) {
       return res.status(400).json({
-        error: `Tienes ${pending.length} pacientes programados que todavía no tienen un resultado registrado.`,
+        error: `Confirma los ${pending.length} pacientes que no fueron atendidos antes de cerrar el día.`,
         pending,
       });
     }

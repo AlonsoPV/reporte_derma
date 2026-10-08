@@ -72,8 +72,8 @@ router.get('/day', requireAuth, async (req, res) => {
     const closure = doctorId ? closures.find((c) => c.doctorId === doctorId) || null : null;
 
     const scheduled = appointments.length;
-    const pending = appointments.filter((a) => a.operationalStatus === 'PENDING').length;
     const attendedFromAppt = appointments.filter((a) => a.operationalStatus === 'ATTENDED').length;
+    const pending = appointments.length - attendedFromAppt;
     const cancelledOrNoShow = appointments.filter((a) =>
       ['NO_SHOW', 'CANCELLED', 'RESCHEDULED'].includes(a.operationalStatus)
     ).length;

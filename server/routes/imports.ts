@@ -369,7 +369,7 @@ router.post('/confirm/:id', requireAuth, requireRole('ADMIN'), async (req, res) 
             data: {
               externalAppointmentId: row.externalAppointmentId,
               ...baseData,
-              operationalStatus: sourceOp,
+              operationalStatus: 'PENDING',
             },
           });
           createdCount++;
@@ -384,18 +384,11 @@ router.post('/confirm/:id', requireAuth, requireRole('ADMIN'), async (req, res) 
             : null;
           if (closed?.status === 'CLOSED') continue;
 
-          const keepAttended = existing.operationalStatus === 'ATTENDED';
-          const nextStatus = keepAttended
-            ? existing.operationalStatus
-            : sourceOp === 'CANCELLED' || sourceOp === 'RESCHEDULED'
-              ? sourceOp
-              : existing.operationalStatus === 'NO_SHOW' ||
-                  existing.operationalStatus === 'CANCELLED' ||
-                  existing.operationalStatus === 'RESCHEDULED'
-                ? existing.operationalStatus
-                : 'PENDING';
+          const doctorConfirmed =
+            existing.operationalStatus === 'ATTENDED' || Boolean(existing.noShowReason);
+          const nextStatus = doctorConfirmed ? existing.operationalStatus : 'PENDING';
 
-          if (!keepAttended && sourceOp === 'CANCELLED' && existing.operationalStatus !== 'CANCELLED') {
+          if (!doctorConfirmed && sourceOp === 'CANCELLED' && existing.operationalStatus !== 'CANCELLED') {
             cancelledCount++;
           }
 

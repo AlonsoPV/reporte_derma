@@ -52,7 +52,12 @@ export function AttendModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-ink/40 p-0 sm:items-center sm:justify-center sm:p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-stretch justify-end bg-ink/40 p-0 sm:items-center sm:justify-center sm:p-4"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="card flex h-full w-full max-w-xl flex-col overflow-hidden sm:h-auto sm:max-h-[90vh]">
         <div className="border-b border-slate-100 px-6 py-4">
           <h2 className="font-display text-2xl font-semibold">Registrar atención</h2>

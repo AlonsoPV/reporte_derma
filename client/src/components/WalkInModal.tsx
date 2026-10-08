@@ -38,7 +38,12 @@ export function WalkInModal({
   }, [user?.role, initialDoctorId]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="card max-h-[90vh] w-full max-w-xl overflow-y-auto">
         <div className="border-b border-slate-100 px-6 py-4">
           <h2 className="font-display text-2xl font-semibold">Paciente nuevo</h2>

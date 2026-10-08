@@ -60,7 +60,7 @@ export function AgendaPage() {
   const [selected, setSelected] = useState<Appointment | null>(null);
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
-  const [listFilter, setListFilter] = useState<'pending' | 'other' | 'all'>('pending');
+  const [listFilter, setListFilter] = useState<'pending' | 'other' | 'all'>('all');
 
   const closeDoctorId = seesAll ? doctorId : user?.doctorId || '';
   const canClose = canEdit && Boolean(closeDoctorId);
@@ -216,7 +216,7 @@ export function AgendaPage() {
           <div className="min-h-0 flex-1 overflow-auto">
             {scheduled.map((r) => {
               const locked = data?.closedDoctorIds?.includes(r.doctorId || '') || data?.isClosed;
-              const canAttend = canEdit && r.operationalStatus === 'PENDING' && !locked;
+              const canAttend = canEdit && !locked;
               return (
                 <button
                   key={r.id}
@@ -232,13 +232,12 @@ export function AgendaPage() {
                       {[seesAll ? r.doctor?.name : null, r.phone, r.notes].filter(Boolean).join(' · ') || 'Sin notas'}
                     </span>
                   </span>
+                  {r.operationalStatus !== 'PENDING' && <Badge status={r.operationalStatus} />}
                   {canAttend ? (
                     <span className="btn-primary shrink-0 px-3 py-1.5">Atender</span>
-                  ) : locked && r.operationalStatus === 'PENDING' ? (
+                  ) : locked ? (
                     <span className="shrink-0 text-xs font-semibold text-brand-700">Cerrado</span>
-                  ) : (
-                    <Badge status={r.operationalStatus} />
-                  )}
+                  ) : null}
                 </button>
               );
             })}

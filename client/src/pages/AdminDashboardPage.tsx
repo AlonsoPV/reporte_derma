@@ -109,7 +109,15 @@ export function AdminDashboardPage() {
       </section>
 
       {reopenId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setReopenId(null);
+              setReason('');
+            }
+          }}
+        >
           <div className="card w-full max-w-md p-6">
             <h3 className="font-display text-xl font-semibold">Reabrir día</h3>
             <p className="mt-1 text-sm text-slate-600">Se registrará en auditoría.</p>

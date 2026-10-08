@@ -208,7 +208,16 @@ export function AttendedPage() {
       </div>
 
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setSelected(null);
+              setEditing(false);
+              setError('');
+            }
+          }}
+        >
           <div className="card max-h-[90vh] w-full max-w-lg overflow-y-auto p-6">
             <div className="flex items-start justify-between gap-3">
               <h2 className="font-display text-2xl font-semibold">

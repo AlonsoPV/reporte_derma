@@ -14,6 +14,7 @@ type Pending = {
   notes?: string | null;
   sourceStatus?: string | null;
   attendanceConfirmation?: string | null;
+  operationalStatus?: string;
 };
 
 type Preview = {
@@ -84,7 +85,12 @@ export function CloseDayModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="card max-h-[92vh] w-full max-w-3xl overflow-y-auto">
         <div className="border-b border-slate-100 px-6 py-4">
           <h2 className="font-display text-2xl font-semibold">Cerrar día</h2>
@@ -98,12 +104,15 @@ export function CloseDayModal({
           {preview && preview.pending.length > 0 && (
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
               <div className="font-semibold text-amber-900">
-                Tienes {preview.pending.length} pacientes programados que todavía no tienen un resultado registrado.
+                Confirma los {preview.pending.length} pacientes que no fueron atendidos. Aunque la agenda los marque como cancelados, este dato lo confirmas tú al cerrar el día.
               </div>
               <div className="mt-4 space-y-4">
                 {preview.pending.map((p) => (
                   <div key={p.id} className="rounded-xl bg-white p-4">
                     <div className="font-medium">{p.startTime} · {p.patientName}</div>
+                    {p.sourceStatus && (
+                      <div className="mt-1 text-sm text-slate-500">En la agenda: {p.sourceStatus}</div>
+                    )}
                     <div className="mt-3 grid gap-2 sm:grid-cols-2">
                       <select
                         className="input"

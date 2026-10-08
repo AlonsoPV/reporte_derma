@@ -78,7 +78,7 @@ export function TodayPage() {
   }, []);
 
   const pending = useMemo(
-    () => data?.appointments.filter((a) => a.operationalStatus === 'PENDING') || [],
+    () => data?.appointments.filter((a) => a.operationalStatus !== 'ATTENDED') || [],
     [data]
   );
 
@@ -105,7 +105,6 @@ export function TodayPage() {
             { label: 'Citas programadas', value: data.kpis.scheduled },
             { label: 'Atendidos', value: data.kpis.attended, accent: 'text-emerald-700' },
             { label: 'Pendientes', value: data.kpis.pending, accent: 'text-amber-700' },
-            { label: 'Cancelados / no atendidos', value: data.kpis.cancelledOrNoShow },
             { label: 'Monto del día', value: money(data.kpis.amount), accent: 'text-brand-700' },
           ]}
         />
@@ -139,7 +138,7 @@ export function TodayPage() {
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
             {(data?.appointments || []).filter((appt) => appt.operationalStatus !== 'ATTENDED').map((appt) => {
-              const canAttend = canEdit && appt.operationalStatus === 'PENDING' && !data?.isClosed;
+              const canAttend = canEdit && !data?.isClosed;
               return (
                 <button
                   key={appt.id}
@@ -155,11 +154,12 @@ export function TodayPage() {
                       {[appt.phone, appt.attendanceConfirmation, appt.notes].filter(Boolean).join(' · ') || 'Sin notas'}
                     </span>
                   </span>
+                  {appt.operationalStatus !== 'PENDING' && <Badge status={appt.operationalStatus} />}
                   {canAttend ? (
                     <span className="btn-primary shrink-0 px-3 py-1.5">Atender</span>
-                  ) : (
-                    <Badge status={appt.operationalStatus} />
-                  )}
+                  ) : data?.isClosed ? (
+                    <span className="shrink-0 text-xs font-semibold text-brand-700">Cerrado</span>
+                  ) : null}
                 </button>
               );
             })}
