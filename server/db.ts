@@ -1,4 +1,7 @@
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
+
+process.env.TZ = 'America/Mexico_City';
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 

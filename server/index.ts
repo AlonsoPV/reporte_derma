@@ -1,4 +1,6 @@
 import 'dotenv/config';
+
+process.env.TZ = 'America/Mexico_City';
 import express from 'express';
 import session from 'express-session';
 import connectPgSimple from 'connect-pg-simple';
