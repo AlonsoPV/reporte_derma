@@ -60,6 +60,7 @@ export function AgendaPage() {
   const [selected, setSelected] = useState<Appointment | null>(null);
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
+  const [listFilter, setListFilter] = useState<'pending' | 'other' | 'all'>('pending');
 
   const closeDoctorId = seesAll ? doctorId : user?.doctorId || '';
   const canClose = canEdit && Boolean(closeDoctorId);
@@ -95,12 +96,27 @@ export function AgendaPage() {
     return (value || '').toLowerCase().includes(q.trim().toLowerCase());
   };
 
-  const scheduled = useMemo(() => {
-    return (data?.appointments || []).filter((a) => {
-      if (a.operationalStatus === 'ATTENDED') return false;
-      return matchesQuery(a.patientName) || matchesQuery(a.phone) || matchesQuery(a.externalAppointmentId);
-    });
+  const agendaPool = useMemo(() => {
+    const query = q.trim().toLowerCase();
+    return (data?.appointments || [])
+      .filter((a) => {
+        if (a.operationalStatus === 'ATTENDED') return false;
+        if (!query) return true;
+        return [a.patientName, a.phone, a.externalAppointmentId, a.doctor?.name, a.notes]
+          .some((value) => (value || '').toLowerCase().includes(query));
+      })
+      .sort((a, b) => a.startTime.localeCompare(b.startTime));
   }, [data, q]);
+
+  const scheduled = useMemo(() => {
+    return agendaPool.filter((a) => {
+      if (listFilter === 'pending') return a.operationalStatus === 'PENDING';
+      if (listFilter === 'other') return a.operationalStatus !== 'PENDING';
+      return true;
+    });
+  }, [agendaPool, listFilter]);
+
+  const pendingCount = agendaPool.filter((a) => a.operationalStatus === 'PENDING').length;
 
   const attended = useMemo(() => {
     return (data?.attendances || []).filter(
@@ -109,20 +125,20 @@ export function AgendaPage() {
   }, [data, q]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="font-display text-3xl font-semibold">Tablero para el día de hoy</h1>
-          <p className="capitalize text-slate-600">
+          <h1 className="font-display text-2xl font-semibold sm:text-3xl">Hoy</h1>
+          <p className="text-sm text-slate-600">
             {seesAll
               ? `Toda la operación · ${formatDisplayDate(date)}`
               : `${user?.name || 'Tu agenda'} · ${formatDisplayDate(date)}`}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
           {seesAll && (
             <select
-              className="input w-auto min-w-[200px]"
+              className="input col-span-2 w-full sm:w-auto sm:min-w-[200px]"
               value={doctorId}
               onChange={(e) => setDoctorId(e.target.value)}
               aria-label="Doctor"
@@ -134,7 +150,7 @@ export function AgendaPage() {
             </select>
           )}
           <input
-            className="input w-56"
+            className="input col-span-2 sm:w-52"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Buscar paciente…"
@@ -146,7 +162,7 @@ export function AgendaPage() {
                 disabled={dayLocked}
                 onClick={() => setWalkInOpen(true)}
               >
-                + Paciente nuevo
+                + Sin cita
               </button>
               <button
                 className="btn-danger"
@@ -173,135 +189,92 @@ export function AgendaPage() {
       {error && <div className="rounded-xl bg-rose-50 px-4 py-3 text-rose-700">{error}</div>}
       {loading && <div className="text-slate-500">Cargando tablero…</div>}
 
-      <section className="card overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-          <div>
-            <h2 className="text-lg font-semibold">Agendados</h2>
-            <p className="text-sm text-slate-500">Selecciona un paciente, captura procedimiento, notas y monto</p>
-          </div>
-          <span className="rounded-full bg-amber-50 px-3 py-1 text-sm font-semibold text-amber-800">
-            {scheduled.length}
-          </span>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-left text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Hora</th>
-                <th className="px-4 py-3">Paciente</th>
-                <th className="px-4 py-3">Teléfono</th>
-                {seesAll && <th className="px-4 py-3">Doctor</th>}
-                <th className="px-4 py-3">Estado</th>
-                <th className="px-4 py-3">Asistencia</th>
-                <th className="px-4 py-3">Notas</th>
-                <th className="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {scheduled.map((r) => {
-                const locked = data?.closedDoctorIds?.includes(r.doctorId || '') || data?.isClosed;
-                const canAttend = canEdit && r.operationalStatus === 'PENDING' && !locked;
-                return (
-                <tr
-                  key={r.id}
-                  className={canAttend ? 'cursor-pointer border-t border-slate-100 hover:bg-brand-50/60' : 'border-t border-slate-100'}
-                  onClick={() => {
-                    if (canAttend) setSelected(r);
-                  }}
+      <div className="grid items-start gap-4 md:grid-cols-2">
+        <section className="card flex max-h-[70vh] flex-col overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3 py-3">
+            <div>
+              <h2 className="font-semibold">Por atender</h2>
+              <p className="text-xs text-slate-500">{pendingCount} pendientes · toca la fila para capturar</p>
+            </div>
+            <div className="flex flex-wrap rounded-xl bg-slate-100 p-1 text-xs font-semibold">
+              {([
+                ['pending', `Pendientes ${pendingCount}`],
+                ['other', `Otros ${agendaPool.length - pendingCount}`],
+                ['all', 'Todos'],
+              ] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={listFilter === id ? 'rounded-lg bg-white px-2.5 py-1 text-brand-800 shadow-sm' : 'rounded-lg px-2.5 py-1 text-slate-500'}
+                  onClick={() => setListFilter(id)}
                 >
-                  <td className="px-4 py-3 font-semibold tabular-nums text-brand-800">{r.startTime}</td>
-                  <td className="px-4 py-3 font-medium">{r.patientName}</td>
-                  <td className="px-4 py-3">{r.phone || '—'}</td>
-                  {seesAll && <td className="px-4 py-3">{r.doctor?.name || 'Sin mapear'}</td>}
-                  <td className="px-4 py-3"><Badge status={r.operationalStatus} /></td>
-                  <td className="px-4 py-3">{r.attendanceConfirmation || '—'}</td>
-                  <td className="max-w-[220px] truncate px-4 py-3 text-slate-500">{r.notes || '—'}</td>
-                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                    {canEdit && r.operationalStatus === 'PENDING' ? (
-                      locked ? (
-                        <span className="text-xs font-semibold text-brand-700">Cerrado</span>
-                      ) : (
-                        <button className="btn-primary" onClick={() => setSelected(r)}>
-                          Seleccionar
-                        </button>
-                      )
-                    ) : (
-                      <span className="text-slate-400">—</span>
-                    )}
-                  </td>
-                </tr>
-                );
-              })}
-              {!loading && scheduled.length === 0 && (
-                <tr>
-                  <td className="px-4 py-10 text-center text-slate-500" colSpan={8}>
-                    No hay pacientes agendados pendientes para este día.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="overflow-hidden rounded-2xl border-2 border-emerald-200 bg-white shadow-soft">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-emerald-100 bg-emerald-50/70 px-5 py-4">
-          <div>
-            <h2 className="text-lg font-semibold text-emerald-900">Atendidos</h2>
-            <p className="text-sm text-emerald-800/80">Procedimiento, notas y monto cobrado del día</p>
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-emerald-800">
-              {attended.length}
-            </span>
-            {canEdit && (
-              <button
-                className="btn-primary"
-                disabled={dayLocked}
-                onClick={() => setWalkInOpen(true)}
-              >
-                + Paciente nuevo
-              </button>
+          <div className="min-h-0 flex-1 overflow-auto">
+            {scheduled.map((r) => {
+              const locked = data?.closedDoctorIds?.includes(r.doctorId || '') || data?.isClosed;
+              const canAttend = canEdit && r.operationalStatus === 'PENDING' && !locked;
+              return (
+                <button
+                  key={r.id}
+                  type="button"
+                  disabled={!canAttend}
+                  className="flex w-full items-center gap-3 border-t border-slate-100 px-3 py-2.5 text-left enabled:hover:bg-brand-50/70 disabled:cursor-default"
+                  onClick={() => setSelected(r)}
+                >
+                  <span className="w-12 shrink-0 text-base font-semibold tabular-nums text-brand-800">{r.startTime}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{r.patientName}</span>
+                    <span className="block truncate text-xs text-slate-500">
+                      {[seesAll ? r.doctor?.name : null, r.phone, r.notes].filter(Boolean).join(' · ') || 'Sin notas'}
+                    </span>
+                  </span>
+                  {canAttend ? (
+                    <span className="btn-primary shrink-0 px-3 py-1.5">Atender</span>
+                  ) : locked && r.operationalStatus === 'PENDING' ? (
+                    <span className="shrink-0 text-xs font-semibold text-brand-700">Cerrado</span>
+                  ) : (
+                    <Badge status={r.operationalStatus} />
+                  )}
+                </button>
+              );
+            })}
+            {!loading && scheduled.length === 0 && (
+              <div className="px-4 py-10 text-center text-sm text-slate-500">No hay pacientes en este filtro.</div>
             )}
           </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-left text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Hora</th>
-                <th className="px-4 py-3">Paciente</th>
-                <th className="px-4 py-3">Procedimiento</th>
-                <th className="px-4 py-3">Monto</th>
-                {seesAll && <th className="px-4 py-3">Doctor</th>}
-                <th className="px-4 py-3">Origen</th>
-                <th className="px-4 py-3">Notas</th>
-              </tr>
-            </thead>
-            <tbody>
-              {attended.map((a) => (
-                <tr key={a.id} className="border-t border-slate-100">
-                  <td className="px-4 py-3 font-medium">{a.actualTime}</td>
-                  <td className="px-4 py-3 font-medium">{a.patientName}</td>
-                  <td className="px-4 py-3">{a.treatment}</td>
-                  <td className="px-4 py-3">{money(Number(a.amount))}</td>
-                  {seesAll && <td className="px-4 py-3">{a.doctor?.name}</td>}
-                  <td className="px-4 py-3">{ORIGIN_LABELS[a.origin]}</td>
-                  <td className="max-w-[220px] truncate px-4 py-3 text-slate-500">{a.notes || '—'}</td>
-                </tr>
-              ))}
-              {!loading && attended.length === 0 && (
-                <tr>
-                  <td className="px-4 py-12 text-center text-emerald-800/70" colSpan={8}>
-                    Aún no hay pacientes atendidos.
-                    <div className="mt-1 text-sm">Selecciona uno de Agendados o agrega un paciente nuevo.</div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+        </section>
+
+        <section className="flex max-h-[70vh] flex-col overflow-hidden rounded-2xl border-2 border-emerald-200 bg-white shadow-soft">
+          <div className="flex items-center justify-between gap-3 border-b border-emerald-100 bg-emerald-50/70 px-3 py-3">
+            <div>
+              <h2 className="font-semibold text-emerald-900">Atendidos hoy</h2>
+              <p className="text-xs text-emerald-800/80">Procedimiento y monto del día</p>
+            </div>
+            <span className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-emerald-800">{attended.length}</span>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto">
+            {attended.map((a) => (
+              <div key={a.id} className="flex items-center gap-3 border-t border-slate-100 px-3 py-2.5">
+                <span className="w-12 shrink-0 text-sm font-semibold tabular-nums">{a.actualTime}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{a.patientName}</span>
+                  <span className="block truncate text-xs text-slate-500">
+                    {[a.treatment, seesAll ? a.doctor?.name : null, ORIGIN_LABELS[a.origin], a.notes].filter(Boolean).join(' · ')}
+                  </span>
+                </span>
+                <span className="shrink-0 text-sm font-semibold text-emerald-800">{money(Number(a.amount))}</span>
+              </div>
+            ))}
+            {!loading && attended.length === 0 && (
+              <div className="px-4 py-10 text-center text-sm text-emerald-800/70">Aún no hay pacientes atendidos.</div>
+            )}
+          </div>
+        </section>
+      </div>
 
       {canEdit && selected && (
         <AttendModal

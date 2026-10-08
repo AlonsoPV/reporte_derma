@@ -52,7 +52,7 @@ export function AdminDashboardPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl font-semibold">Dashboard administrativo</h1>
-          <p className="capitalize text-slate-600">{formatDisplayDate(date)}</p>
+          <p className="text-slate-600">{formatDisplayDate(date)}</p>
         </div>
         <div className="flex gap-2">
           <button className="btn-secondary" onClick={() => setDate((d) => shiftDate(d, -1))}>←</button>
@@ -70,53 +70,41 @@ export function AdminDashboardPage() {
             { label: 'Atendidos', value: data.kpis.attended, accent: 'text-emerald-700' },
             { label: 'Pendientes', value: data.kpis.pending, accent: 'text-amber-700' },
             { label: 'No atendidos', value: data.kpis.noShow },
-            { label: 'Ingresos / ticket', value: `${money(data.kpis.amount)} · ${money(data.kpis.ticketAvg)}`, accent: 'text-brand-700' },
+            { label: 'Ingresos', value: money(data.kpis.amount), accent: 'text-brand-700' },
+            { label: 'Ticket prom.', value: money(data.kpis.ticketAvg), accent: 'text-brand-700' },
           ]}
         />
       )}
 
-      <section className="card overflow-hidden">
-        <div className="border-b border-slate-100 px-5 py-4">
-          <h2 className="text-lg font-semibold">Resultado por doctor</h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-left text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Doctor</th>
-                <th className="px-4 py-3">Agendados</th>
-                <th className="px-4 py-3">Atendidos</th>
-                <th className="px-4 py-3">Pendientes</th>
-                <th className="px-4 py-3">Ingresos</th>
-                <th className="px-4 py-3">Ticket</th>
-                <th className="px-4 py-3">Cierre</th>
-                <th className="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {(data?.byDoctor || []).map((row) => (
-                <tr key={row.doctor.id} className="border-t border-slate-100">
-                  <td className="px-4 py-3 font-medium">{row.doctor.name}</td>
-                  <td className="px-4 py-3">{row.scheduled}</td>
-                  <td className="px-4 py-3">{row.attended}</td>
-                  <td className="px-4 py-3">{row.pending}</td>
-                  <td className="px-4 py-3">{money(row.amount)}</td>
-                  <td className="px-4 py-3">{money(row.ticketAvg)}</td>
-                  <td className="px-4 py-3">
-                    <Badge status={row.closureStatus} label={row.closureStatus === 'CLOSED' ? 'Cerrado' : 'Abierto'} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      <Link className="btn-ghost" to={`/agenda?doctorId=${row.doctor.id}&date=${date}`}>Detalle</Link>
-                      {canEdit && row.closureStatus === 'CLOSED' && row.closureId && (
-                        <button className="btn-secondary" onClick={() => setReopenId(row.closureId)}>Reabrir</button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">Resultado por doctor</h2>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {(data?.byDoctor || []).map((row) => (
+            <article key={row.doctor.id} className="card flex flex-col gap-3 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="truncate font-semibold">{row.doctor.name}</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {row.pending} pendientes · {row.attended} atendidos · {row.scheduled} agendados
+                  </p>
+                </div>
+                <Badge status={row.closureStatus} label={row.closureStatus === 'CLOSED' ? 'Cerrado' : 'Abierto'} />
+              </div>
+              <div className="flex items-end justify-between gap-3">
+                <div>
+                  <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Ingresos</div>
+                  <div className="text-xl font-semibold text-brand-800">{money(row.amount)}</div>
+                  <div className="text-xs text-slate-500">Ticket {money(row.ticketAvg)}</div>
+                </div>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Link className="btn-secondary" to={`/agenda?doctorId=${row.doctor.id}`}>Agenda</Link>
+                  {canEdit && row.closureStatus === 'CLOSED' && row.closureId && (
+                    <button className="btn-secondary" onClick={() => setReopenId(row.closureId)}>Reabrir</button>
+                  )}
+                </div>
+              </div>
+            </article>
+          ))}
         </div>
       </section>
 

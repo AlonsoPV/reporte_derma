@@ -21,7 +21,7 @@ export function LoginPage() {
 
   useEffect(() => {
     api.get<{ doctors: Array<{ id: string; name: string }> }>('/api/auth/doctors')
-      .then((r) => setDoctors(r.doctors))
+      .then((r) => setDoctors(Array.isArray(r?.doctors) ? r.doctors : []))
       .catch(() => setDoctors([]));
   }, []);
 
@@ -134,7 +134,7 @@ export function LoginPage() {
                 name="medico-activo"
               >
                 <option value="">Selecciona tu nombre</option>
-                {doctors.map((d) => (
+                {(doctors ?? []).map((d) => (
                   <option key={d.id} value={d.id}>{d.name}</option>
                 ))}
               </select>

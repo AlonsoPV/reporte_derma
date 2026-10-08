@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
-import { Badge } from '../components/Badge';
 import { money } from '../components/KpiGrid';
 import { DateQuickFilters } from '../components/DateQuickFilters';
 import { resolveDatePreset } from '../lib/utils';
@@ -55,11 +54,30 @@ export function AttendedPage() {
 
   const load = async () => {
     const params = new URLSearchParams({ from, to });
-    if (q) params.set('q', q);
     if (seesAll && doctorId) params.set('doctorId', doctorId);
     const data = await api.get<{ attendances: Attendance[] }>(`/api/attendances?${params}`);
     setRows(data.attendances);
   };
+
+  const visible = useMemo(() => {
+    const query = q.trim().toLowerCase();
+    if (!query) return rows;
+    return rows.filter((r) =>
+      [r.patientName, r.phone, r.treatment, r.doctor?.name, r.notes]
+        .some((value) => (value || '').toLowerCase().includes(query))
+    );
+  }, [rows, q]);
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, Attendance[]>();
+    for (const row of visible) {
+      const day = String(row.attendanceDate).slice(0, 10);
+      const list = map.get(day) || [];
+      list.push(row);
+      map.set(day, list);
+    }
+    return Array.from(map.entries());
+  }, [visible]);
 
   useEffect(() => {
     load().catch(console.error);
@@ -114,100 +132,79 @@ export function AttendedPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-3xl font-semibold">Pacientes atendidos</h1>
-        <p className="text-slate-600">
-          {seesAll
-            ? canEdit
-              ? 'Histórico de toda la operación. Los días cerrados solo se consultan.'
-              : 'Histórico de toda la operación. Solo consulta, sin editar.'
-            : 'Solo tu histórico de atenciones. Los días cerrados no se pueden editar.'}
-        </p>
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h1 className="font-display text-2xl font-semibold sm:text-3xl">Atendidos</h1>
+          <p className="text-sm text-slate-600">
+            {seesAll
+              ? canEdit
+                ? 'Histórico de toda la operación. Los días cerrados solo se consultan.'
+                : 'Histórico de toda la operación. Solo consulta.'
+              : 'Solo tu histórico. Los días cerrados no se pueden editar.'}
+          </p>
+        </div>
+        <p className="text-sm font-medium text-slate-500">{visible.length} registros</p>
       </div>
 
-      <div className="card space-y-4 p-4">
-        <DateQuickFilters
-          from={from}
-          to={to}
-          onChange={({ from: f, to: t }) => {
-            setFrom(f);
-            setTo(t);
-          }}
-        />
-        <div className="grid gap-3 md:grid-cols-5">
-          <div>
-            <label className="label">Desde</label>
-            <input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Hasta</label>
-            <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-          </div>
+      <div className="card space-y-3 p-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <DateQuickFilters
+            from={from}
+            to={to}
+            onChange={({ from: f, to: t }) => {
+              setFrom(f);
+              setTo(t);
+            }}
+          />
+          <input className="input w-full sm:w-36" type="date" aria-label="Desde" value={from} onChange={(e) => setFrom(e.target.value)} />
+          <input className="input w-full sm:w-36" type="date" aria-label="Hasta" value={to} onChange={(e) => setTo(e.target.value)} />
           {seesAll && (
-            <div>
-              <label className="label">Doctor</label>
-              <select className="input" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
-                <option value="">Todos</option>
-                {doctors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
-            </div>
+            <select className="input w-full sm:w-auto sm:min-w-[180px]" aria-label="Doctor" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}>
+              <option value="">Todos los doctores</option>
+              {doctors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
           )}
-          <div className={seesAll ? '' : 'md:col-span-2'}>
-            <label className="label">Buscar</label>
-            <input className="input" placeholder="Nombre, teléfono, tratamiento" value={q} onChange={(e) => setQ(e.target.value)} />
-          </div>
-          <div className="flex items-end">
-            <button className="btn-primary w-full" onClick={() => load()}>Buscar</button>
-          </div>
+          <input
+            className="input w-full sm:min-w-[220px] sm:flex-1"
+            placeholder="Buscar nombre, teléfono o tratamiento"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
         </div>
       </div>
 
-      <div className="card overflow-x-auto">
-        <table className="min-w-full text-sm">
-          <thead className="bg-slate-50 text-left text-slate-500">
-            <tr>
-              <th className="px-4 py-3">Fecha</th>
-              <th className="px-4 py-3">Hora</th>
-              <th className="px-4 py-3">Paciente</th>
-              <th className="px-4 py-3">Tratamiento</th>
-              <th className="px-4 py-3">Monto</th>
-              {seesAll && <th className="px-4 py-3">Doctor</th>}
-              <th className="px-4 py-3">Origen</th>
-              <th className="px-4 py-3"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} className="border-t border-slate-100">
-                <td className="px-4 py-3">{String(r.attendanceDate).slice(0, 10)}</td>
-                <td className="px-4 py-3">{r.actualTime}</td>
-                <td className="px-4 py-3 font-medium">{r.patientName}</td>
-                <td className="px-4 py-3">{r.treatment}</td>
-                <td className="px-4 py-3">{money(Number(r.amount))}</td>
-                {seesAll && <td className="px-4 py-3">{r.doctor?.name}</td>}
-                <td className="px-4 py-3"><Badge status={r.origin === 'WALK_IN' ? 'RESCHEDULED' : 'ATTENDED'} label={ORIGIN_LABELS[r.origin]} /></td>
-                <td className="px-4 py-3">
-                  <div className="flex gap-1">
-                    <button className="btn-ghost" onClick={() => openDetail(r, false)}>Ver</button>
-                    {r.isDayClosed ? (
-                      <span className="self-center text-xs font-semibold text-brand-700">Cerrado</span>
-                    ) : canEdit ? (
-                      <button className="btn-secondary" onClick={() => openDetail(r, true)}>Editar</button>
-                    ) : null}
-                  </div>
-                </td>
-              </tr>
+      <div className="card max-h-[70vh] overflow-auto">
+        {grouped.map(([day, items]) => (
+          <section key={day}>
+            <div className="sticky top-0 z-10 border-b border-slate-100 bg-slate-50/95 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 backdrop-blur">
+              {day} · {items.length}
+            </div>
+            {items.map((r) => (
+              <div key={r.id} className="flex items-center gap-3 border-b border-slate-100 px-3 py-2.5">
+                <span className="w-12 shrink-0 text-sm font-semibold tabular-nums text-brand-800">{r.actualTime}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{r.patientName}</span>
+                  <span className="block truncate text-xs text-slate-500">
+                    {[r.treatment, seesAll ? r.doctor?.name : null, ORIGIN_LABELS[r.origin]].filter(Boolean).join(' · ')}
+                  </span>
+                </span>
+                <span className="shrink-0 text-sm font-semibold">{money(Number(r.amount))}</span>
+                <span className="flex shrink-0 gap-1">
+                  <button className="btn-ghost px-2 py-1.5" onClick={() => openDetail(r, false)}>Ver</button>
+                  {r.isDayClosed ? (
+                    <span className="self-center text-xs font-semibold text-brand-700">Cerrado</span>
+                  ) : canEdit ? (
+                    <button className="btn-secondary px-2 py-1.5" onClick={() => openDetail(r, true)}>Editar</button>
+                  ) : null}
+                </span>
+              </div>
             ))}
-            {rows.length === 0 && (
-              <tr>
-                <td className="px-4 py-10 text-center text-slate-500" colSpan={seesAll ? 8 : 7}>
-                  No hay atenciones en este periodo.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+          </section>
+        ))}
+        {visible.length === 0 && (
+          <div className="px-4 py-10 text-center text-sm text-slate-500">No hay atenciones en este periodo.</div>
+        )}
       </div>
 
       {selected && (

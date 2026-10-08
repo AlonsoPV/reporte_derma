@@ -33,7 +33,7 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 
   const contentType = res.headers.get('content-type') || '';
   if (contentType.includes('application/json')) return res.json();
-  return res as unknown as T;
+  throw Object.assign(new Error('La API no respondió JSON'), { status: res.status });
 }
 
 export const api = {

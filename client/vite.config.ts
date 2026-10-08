@@ -28,6 +28,12 @@ export default defineConfig({
     port: Number(process.env.PORT) || 5173,
     strictPort: true,
     allowedHosts: true,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:5050',
+        changeOrigin: true,
+      },
+    },
   },
   build: {
     outDir: 'dist',
