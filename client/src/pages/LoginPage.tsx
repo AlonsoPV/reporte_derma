@@ -61,6 +61,34 @@ export function LoginPage() {
           </button>
         </div>
 
+        <div className="mb-5 rounded-xl border border-brand-100 bg-brand-50 px-4 py-3 text-sm text-slate-700">
+          <p className="font-semibold text-brand-800">Usuarios de prueba</p>
+          {mode === 'doctor' ? (
+            <div className="mt-2 space-y-2">
+              <p>Selecciona uno de estos médicos en la lista:</p>
+              <ul className="space-y-2">
+                <li>
+                  <span className="font-medium">Berenice Gomez Tagle Boix</span>
+                  <span className="block break-all text-xs">berenice@clinicademo.local</span>
+                </li>
+                <li>
+                  <span className="font-medium">Carlos Mendoza Ruiz</span>
+                  <span className="block break-all text-xs">carlos@clinicademo.local</span>
+                </li>
+                <li>
+                  <span className="font-medium">Ana Patricia Solís</span>
+                  <span className="block break-all text-xs">ana@clinicademo.local</span>
+                </li>
+              </ul>
+            </div>
+          ) : (
+            <p className="mt-2">
+              Correo: <code className="break-all font-semibold">admin@clinicademo.local</code>
+            </p>
+          )}
+          <p className="mt-3">Contraseña demo: <code className="font-semibold">Demo123!</code></p>
+        </div>
+
         <form
           className="space-y-4"
           autoComplete="off"
