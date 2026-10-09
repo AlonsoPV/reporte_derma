@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import { DemoDayLoader } from '../components/DemoDayLoader';
+import { DemoCleanup } from '../components/DemoCleanup';
 
 type Tab = 'users' | 'doctors' | 'imports' | 'closures' | 'audit';
 
@@ -49,6 +49,9 @@ export function AdminPage() {
 
   useEffect(() => {
     load().catch(console.error);
+    const refresh = () => { load().catch(console.error); };
+    window.addEventListener('demo-cleanup-complete', refresh);
+    return () => window.removeEventListener('demo-cleanup-complete', refresh);
   }, [tab]);
 
   const tabs: Array<{ id: Tab; label: string }> = [
@@ -76,7 +79,7 @@ export function AdminPage() {
 
       {message && <div className="rounded-xl bg-emerald-50 px-4 py-3 text-emerald-800">{message}</div>}
 
-      <DemoDayLoader />
+      <DemoCleanup />
 
       {tab === 'users' && (
         <div className="grid gap-4 lg:grid-cols-2">

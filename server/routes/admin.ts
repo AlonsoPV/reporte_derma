@@ -4,23 +4,31 @@ import { prisma } from '../db';
 import { requireAuth, requireRole, getUser } from '../middleware/auth';
 import { userSchema, doctorSchema, doctorMappingSchema } from '../../shared/schemas';
 import { writeAudit } from '../utils';
-import { DEMO_DATE, seedDemoDay } from '../services/demo-day';
+import { CLEANUP_CONFIRMATION, cleanupDemoData } from '../services/demo-cleanup';
 
 const router = Router();
 
 router.use(requireAuth, requireRole('ADMIN'));
 
-router.post('/demo-day', async (req, res) => {
-  if (req.body?.confirmation !== DEMO_DATE) {
-    return res.status(400).json({ error: 'Confirma la carga demo del 8 de octubre de 2026.' });
+router.get('/demo-cleanup', async (req, res) => {
+  try {
+    res.json(await cleanupDemoData(getUser(req).id));
+  } catch (error) {
+    res.status((error as Error & { status?: number }).status || 500).json({ error: 'No se pudo revisar la información demo.' });
+  }
+});
+
+router.post('/demo-cleanup', async (req, res) => {
+  if (req.body?.confirmation !== CLEANUP_CONFIRMATION) {
+    return res.status(400).json({ error: `Escribe ${CLEANUP_CONFIRMATION} para confirmar la eliminación.` });
   }
   try {
-    const result = await seedDemoDay(getUser(req).id);
+    const result = await cleanupDemoData(getUser(req).id, true);
     res.json(result);
   } catch (error) {
     const status = (error as Error & { status?: number }).status;
     res.status(status || 500).json({
-      error: status ? (error as Error).message : 'No se pudo completar la carga. No se guardaron cambios parciales.',
+      error: status ? (error as Error).message : 'No se pudo completar la eliminación. No se guardaron cambios parciales.',
     });
   }
 });
