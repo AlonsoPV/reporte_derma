@@ -6,6 +6,8 @@ import { KpiGrid, money } from '../components/KpiGrid';
 import { formatDisplayDate, todayISO } from '../lib/utils';
 import { canSeeAll, isReadOnlyRole } from '@shared/constants';
 import { isOnAgenda, isPendingOnAgenda } from '@shared/match';
+import { huliAgendaStatus } from '@shared/huli';
+import { compareTimes, toTime24h } from '@shared/time';
 import { AttendModal } from '../components/AttendModal';
 import { WalkInModal } from '../components/WalkInModal';
 import { CloseDayModal } from '../components/CloseDayModal';
@@ -81,7 +83,9 @@ export function TodayPage() {
   }, []);
 
   const agenda = useMemo(
-    () => (data?.appointments || []).filter(isOnAgenda),
+    () => (data?.appointments || [])
+      .filter(isOnAgenda)
+      .sort((a, b) => compareTimes(a.startTime, b.startTime) || a.patientName.localeCompare(b.patientName, 'es')),
     [data]
   );
   const pending = useMemo(
@@ -146,6 +150,7 @@ export function TodayPage() {
           <div className="min-h-0 flex-1 overflow-auto">
             {agenda.map((appt) => {
               const canAttend = canEdit && !data?.isClosed;
+              const huli = huliAgendaStatus(appt.sourceStatus, appt.attendanceConfirmation);
               return (
                 <button
                   key={appt.id}
@@ -154,14 +159,14 @@ export function TodayPage() {
                   className="flex w-full items-center gap-3 border-t border-slate-100 px-3 py-2.5 text-left enabled:hover:bg-brand-50/70 disabled:cursor-default"
                   onClick={() => setSelected(appt)}
                 >
-                  <span className="w-12 shrink-0 text-base font-semibold tabular-nums text-brand-800">{appt.startTime}</span>
+                  <span className="w-14 shrink-0 text-base font-semibold tabular-nums text-brand-800">{toTime24h(appt.startTime)}</span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">{appt.patientName}</span>
+                    <span className="block truncate font-medium">{appt.patientName || '—'}</span>
                     <span className="block truncate text-xs text-slate-500">
-                      {[appt.phone, appt.attendanceConfirmation, appt.notes].filter(Boolean).join(' · ') || 'Sin notas'}
+                      {[appt.phone, appt.notes].filter(Boolean).join(' · ') || 'Sin notas'}
                     </span>
                   </span>
-                  {appt.operationalStatus !== 'PENDING' && <Badge status={appt.operationalStatus} />}
+                  {huli && <Badge status={huli.status} label={huli.label} className="shrink-0" />}
                   {canAttend ? (
                     <span className="btn-primary shrink-0 px-3 py-1.5">Atender</span>
                   ) : data?.isClosed ? (
@@ -184,7 +189,7 @@ export function TodayPage() {
           <div className="min-h-0 flex-1 overflow-auto">
             {(data?.attendances || []).map((a) => (
               <div key={a.id} className="flex items-center gap-3 border-t border-slate-100 px-3 py-2.5">
-                <span className="w-12 shrink-0 text-sm font-semibold tabular-nums">{a.actualTime}</span>
+                <span className="w-14 shrink-0 text-sm font-semibold tabular-nums">{toTime24h(a.actualTime)}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{a.patientName}</span>
                   <span className="block truncate text-xs text-slate-500">

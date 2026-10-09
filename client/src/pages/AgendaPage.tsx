@@ -10,6 +10,8 @@ import { formatDisplayDate, todayISO } from '../lib/utils';
 import { useAuth } from '../auth/AuthContext';
 import { canSeeAll, isReadOnlyRole, ORIGIN_LABELS } from '@shared/constants';
 import { isOnAgenda, isPendingOnAgenda } from '@shared/match';
+import { huliAgendaStatus } from '@shared/huli';
+import { compareTimes, toTime24h } from '@shared/time';
 
 type Appointment = {
   id: string;
@@ -108,7 +110,7 @@ export function AgendaPage() {
         return [a.patientName, a.phone, a.externalAppointmentId, a.doctor?.name, a.notes]
           .some((value) => (value || '').toLowerCase().includes(query));
       })
-      .sort((a, b) => a.startTime.localeCompare(b.startTime));
+      .sort((a, b) => compareTimes(a.startTime, b.startTime) || a.patientName.localeCompare(b.patientName, 'es'));
   }, [data, q]);
 
   const scheduled = useMemo(() => {
@@ -220,6 +222,7 @@ export function AgendaPage() {
             {scheduled.map((r) => {
               const locked = data?.closedDoctorIds?.includes(r.doctorId || '') || data?.isClosed;
               const canAttend = canEdit && !locked;
+              const huli = huliAgendaStatus(r.sourceStatus, r.attendanceConfirmation);
               return (
                 <button
                   key={r.id}
@@ -228,14 +231,14 @@ export function AgendaPage() {
                   className="flex w-full items-center gap-3 border-t border-slate-100 px-3 py-2.5 text-left enabled:hover:bg-brand-50/70 disabled:cursor-default"
                   onClick={() => setSelected(r)}
                 >
-                  <span className="w-12 shrink-0 text-base font-semibold tabular-nums text-brand-800">{r.startTime}</span>
+                  <span className="w-14 shrink-0 text-base font-semibold tabular-nums text-brand-800">{toTime24h(r.startTime)}</span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">{r.patientName}</span>
+                    <span className="block truncate font-medium">{r.patientName || '—'}</span>
                     <span className="block truncate text-xs text-slate-500">
                       {[seesAll ? r.doctor?.name : null, r.phone, r.notes].filter(Boolean).join(' · ') || 'Sin notas'}
                     </span>
                   </span>
-                  {r.operationalStatus !== 'PENDING' && <Badge status={r.operationalStatus} />}
+                  {huli && <Badge status={huli.status} label={huli.label} className="shrink-0" />}
                   {canAttend ? (
                     <span className="btn-primary shrink-0 px-3 py-1.5">Atender</span>
                   ) : locked ? (
@@ -261,7 +264,7 @@ export function AgendaPage() {
           <div className="min-h-0 flex-1 overflow-auto">
             {attended.map((a) => (
               <div key={a.id} className="flex items-center gap-3 border-t border-slate-100 px-3 py-2.5">
-                <span className="w-12 shrink-0 text-sm font-semibold tabular-nums">{a.actualTime}</span>
+                <span className="w-14 shrink-0 text-sm font-semibold tabular-nums">{toTime24h(a.actualTime)}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{a.patientName}</span>
                   <span className="block truncate text-xs text-slate-500">

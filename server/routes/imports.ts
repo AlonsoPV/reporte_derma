@@ -6,7 +6,9 @@ import XLSX from 'xlsx';
 import { prisma } from '../db';
 import { requireAuth, requireRole, getUser } from '../middleware/auth';
 import { EXPECTED_EXCEL_COLUMNS } from '../../shared/constants';
+import { huliRowValue, huliText, mapHuliEstado } from '../../shared/huli';
 import { normalizeMatchKey } from '../../shared/match';
+import { toTime24h } from '../../shared/time';
 import { parseDateOnly, writeAudit, formatDateOnly } from '../utils';
 import type { OperationalStatus } from '@prisma/client';
 
@@ -50,10 +52,9 @@ type ParsedRow = {
 };
 
 function cell(row: Record<string, unknown>, key: string): string {
-  const val = row[key];
-  if (val == null || val === '') return '';
+  const val = huliRowValue(row, key);
   if (val instanceof Date) return val.toISOString();
-  return String(val).trim();
+  return huliText(val);
 }
 
 function parseExcelDate(value: string): Date | null {
@@ -82,25 +83,19 @@ function parseExcelDate(value: string): Date | null {
   return null;
 }
 
-function parseTime(value: string): string {
-  if (!value) return '';
-  if (/^\d+(\.\d+)?$/.test(value)) {
-    const fraction = Number(value) % 1;
-    const totalMinutes = Math.round(fraction * 24 * 60);
-    const h = Math.floor(totalMinutes / 60);
-    const m = totalMinutes % 60;
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+function parseTime(value: unknown): string {
+  if (value == null || value === '') return '';
+  if (value instanceof Date) {
+    const excelEpoch = value.getUTCFullYear() <= 1900;
+    const h = excelEpoch ? value.getUTCHours() : value.getHours();
+    const m = excelEpoch ? value.getUTCMinutes() : value.getMinutes();
+    return toTime24h(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
   }
-  const match = value.match(/(\d{1,2}):(\d{2})/);
-  if (match) return `${match[1].padStart(2, '0')}:${match[2]}`;
-  return value;
+  return toTime24h(String(value).trim());
 }
 
 function mapOperationalFromSource(sourceStatus: string): OperationalStatus {
-  const s = sourceStatus.toLowerCase();
-  if (s.includes('cancel')) return 'CANCELLED';
-  if (s.includes('reagend')) return 'RESCHEDULED';
-  return 'PENDING';
+  return mapHuliEstado(sourceStatus);
 }
 
 async function parseWorkbook(filePath: string) {
@@ -144,10 +139,6 @@ async function parseWorkbook(filePath: string) {
       errors.push({ row: rowNumber, message: 'Falta ID cita' });
       return;
     }
-    if (!patientName) {
-      errors.push({ row: rowNumber, message: 'Falta Nombre' });
-      return;
-    }
 
     const appointmentDate = parseExcelDate(fecha);
     if (!appointmentDate) {
@@ -164,8 +155,8 @@ async function parseWorkbook(filePath: string) {
       rowNumber,
       externalAppointmentId,
       appointmentDate,
-      startTime: parseTime(cell(row, 'Inicio')),
-      endTime: parseTime(cell(row, 'Fin')),
+      startTime: parseTime(huliRowValue(row, 'Inicio')),
+      endTime: parseTime(huliRowValue(row, 'Fin')),
       duration: cell(row, 'Duración'),
       patientName,
       phone: cell(row, 'Teléfono'),
@@ -370,7 +361,7 @@ router.post('/confirm/:id', requireAuth, requireRole('ADMIN'), async (req, res) 
             data: {
               externalAppointmentId: row.externalAppointmentId,
               ...baseData,
-              operationalStatus: 'PENDING',
+              operationalStatus: sourceOp,
             },
           });
           createdCount++;
@@ -387,7 +378,7 @@ router.post('/confirm/:id', requireAuth, requireRole('ADMIN'), async (req, res) 
 
           const doctorConfirmed =
             existing.operationalStatus === 'ATTENDED' || Boolean(existing.noShowReason);
-          const nextStatus = doctorConfirmed ? existing.operationalStatus : 'PENDING';
+          const nextStatus = doctorConfirmed ? existing.operationalStatus : sourceOp;
 
           if (!doctorConfirmed && sourceOp === 'CANCELLED' && existing.operationalStatus !== 'CANCELLED') {
             cancelledCount++;

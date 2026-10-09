@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '../lib/api';
 import { nowTime } from '../lib/utils';
+import { toTime24h } from '@shared/time';
 
 type Appointment = {
   id: string;
@@ -69,7 +70,7 @@ export function AttendModal({
             <div className="mt-2 grid gap-1 text-sm text-slate-600">
               <div>Teléfono: {appointment.phone || '—'}</div>
               <div>Correo: {appointment.email || '—'}</div>
-              <div>Hora programada: {appointment.startTime}</div>
+              <div>Hora programada: {toTime24h(appointment.startTime)}</div>
               <div>Estado Huli: {appointment.sourceStatus || '—'}</div>
               <div>Asistencia: {appointment.attendanceConfirmation || '—'}</div>
               <div>Notas: {appointment.notes || '—'}</div>

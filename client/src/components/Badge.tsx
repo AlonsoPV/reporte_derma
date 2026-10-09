@@ -10,6 +10,8 @@ const styles: Record<string, string> = {
   CLOSED: 'bg-brand-100 text-brand-800',
   OPEN: 'bg-lime-100 text-lime-800',
   CONFIRMADA: 'bg-emerald-50 text-emerald-700',
+  COMPLETADA: 'bg-teal-100 text-teal-800',
+  HULI: 'bg-slate-100 text-slate-700',
   ACTIVE: 'bg-emerald-100 text-emerald-800',
   INACTIVE: 'bg-slate-200 text-slate-600',
   ADMIN: 'bg-brand-100 text-brand-800',

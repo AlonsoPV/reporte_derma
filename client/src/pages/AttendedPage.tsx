@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import { money } from '../components/KpiGrid';
 import { DateQuickFilters } from '../components/DateQuickFilters';
 import { resolveDatePreset } from '../lib/utils';
+import { toTime24h } from '@shared/time';
 import { canSeeAll, isReadOnlyRole, ORIGIN_LABELS } from '@shared/constants';
 
 type Attendance = {
@@ -182,7 +183,7 @@ export function AttendedPage() {
             </div>
             {items.map((r) => (
               <div key={r.id} className="flex items-center gap-3 border-b border-slate-100 px-3 py-2.5">
-                <span className="w-12 shrink-0 text-sm font-semibold tabular-nums text-brand-800">{r.actualTime}</span>
+                <span className="w-14 shrink-0 text-sm font-semibold tabular-nums text-brand-800">{toTime24h(r.actualTime)}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{r.patientName}</span>
                   <span className="block truncate text-xs text-slate-500">

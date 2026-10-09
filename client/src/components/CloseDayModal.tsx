@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import { money } from './KpiGrid';
 import { NO_SHOW_REASONS, NO_SHOW_REASON_LABELS, type NoShowReason } from '@shared/constants';
 import { AttendModal } from './AttendModal';
+import { toTime24h } from '@shared/time';
 
 type Pending = {
   id: string;
@@ -109,7 +110,7 @@ export function CloseDayModal({
               <div className="mt-4 space-y-4">
                 {preview.pending.map((p) => (
                   <div key={p.id} className="rounded-xl bg-white p-4">
-                    <div className="font-medium">{p.startTime} · {p.patientName}</div>
+                    <div className="font-medium">{toTime24h(p.startTime)} · {p.patientName}</div>
                     {p.sourceStatus && (
                       <div className="mt-1 text-sm text-slate-500">En la agenda: {p.sourceStatus}</div>
                     )}

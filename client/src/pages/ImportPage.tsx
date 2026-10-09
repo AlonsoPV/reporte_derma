@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../lib/api';
+import { EXPECTED_EXCEL_COLUMNS } from '@shared/constants';
 
 type PreviewSummary = {
   rowsDetected: number;
@@ -55,7 +56,8 @@ export function ImportPage() {
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-3xl font-semibold">Importar Excel (Huli)</h1>
-        <p className="text-slate-600">Vista previa antes de confirmar. Upsert por ID cita.</p>
+        <p className="text-slate-600">Exporta el reporte de citas de Huli y cárgalo aquí. Las horas llegan como 1:00 PM y se guardan en 24 h. Confirmación por ID cita.</p>
+        <p className="mt-1 text-xs text-slate-500">Columnas: {EXPECTED_EXCEL_COLUMNS.join(', ')}.</p>
       </div>
 
       <div className="card space-y-4 p-6">
