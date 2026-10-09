@@ -52,6 +52,24 @@ export function AttendModal({
     }
   };
 
+  const markNoShow = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      await api.post('/api/classify', {
+        appointmentId: appointment.id,
+        operationalStatus: 'NO_SHOW',
+        reason: 'NO_SE_PRESENTO',
+        notes: notes || undefined,
+      });
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'No se pudo marcar como no se presentó');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-stretch justify-end bg-ink/40 p-0 sm:items-center sm:justify-center sm:p-4"
@@ -109,11 +127,22 @@ export function AttendModal({
 
           {error && <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
         </div>
-        <div className="flex gap-2 border-t border-slate-100 px-6 py-4">
-          <button className="btn-secondary flex-1" onClick={onClose} disabled={saving}>Cancelar</button>
+        <div className="flex flex-wrap gap-2 border-t border-slate-100 px-6 py-4">
+          <button className="btn-secondary min-w-[6.5rem] flex-1" onClick={onClose} disabled={saving}>Cancelar</button>
+          {!confirming && (
+            <button
+              type="button"
+              className="btn min-w-[7.5rem] flex-1 bg-slate-100 text-slate-800 hover:bg-slate-200"
+              onClick={() => void markNoShow()}
+              disabled={saving}
+            >
+              {saving ? 'Guardando…' : 'No se presentó'}
+            </button>
+          )}
           {!confirming ? (
             <button
-              className="btn-primary flex-1"
+              className="btn-primary min-w-[8rem] flex-1"
+              disabled={saving}
               onClick={() => {
                 if (!treatment.trim() || !amount || Number(amount) <= 0) {
                   setError('Procedimiento y monto son obligatorios');

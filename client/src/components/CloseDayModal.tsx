@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { money } from './KpiGrid';
-import { NO_SHOW_REASONS, NO_SHOW_REASON_LABELS, type NoShowReason } from '@shared/constants';
 import { AttendModal } from './AttendModal';
 import { toTime24h } from '@shared/time';
 
@@ -52,7 +51,6 @@ export function CloseDayModal({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [attendNow, setAttendNow] = useState<Pending | null>(null);
-  const [reasonById, setReasonById] = useState<Record<string, NoShowReason>>({});
   const [notesById, setNotesById] = useState<Record<string, string>>({});
 
   const load = async () => {
@@ -74,8 +72,11 @@ export function CloseDayModal({
     load();
   }, [date, doctorId]);
 
-  const classify = async (appointmentId: string, status: 'NO_SHOW' | 'CANCELLED' | 'RESCHEDULED') => {
-    const reason = reasonById[appointmentId] || 'NO_SE_PRESENTO';
+  const classify = async (
+    appointmentId: string,
+    status: 'NO_SHOW' | 'CANCELLED' | 'RESCHEDULED',
+    reason: 'NO_SE_PRESENTO' | 'CANCELO' | 'REAGENDO',
+  ) => {
     await api.post('/api/classify', {
       appointmentId,
       operationalStatus: status,
@@ -114,27 +115,16 @@ export function CloseDayModal({
                     {p.sourceStatus && (
                       <div className="mt-1 text-sm text-slate-500">En la agenda: {p.sourceStatus}</div>
                     )}
-                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                      <select
-                        className="input"
-                        value={reasonById[p.id] || 'NO_SE_PRESENTO'}
-                        onChange={(e) => setReasonById((s) => ({ ...s, [p.id]: e.target.value as NoShowReason }))}
-                      >
-                        {NO_SHOW_REASONS.map((r) => (
-                          <option key={r} value={r}>{NO_SHOW_REASON_LABELS[r]}</option>
-                        ))}
-                      </select>
-                      <input
-                        className="input"
-                        placeholder="Observación (opcional)"
-                        value={notesById[p.id] || ''}
-                        onChange={(e) => setNotesById((s) => ({ ...s, [p.id]: e.target.value }))}
-                      />
-                    </div>
+                    <input
+                      className="input mt-3"
+                      placeholder="Observación (opcional)"
+                      value={notesById[p.id] || ''}
+                      onChange={(e) => setNotesById((s) => ({ ...s, [p.id]: e.target.value }))}
+                    />
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <button className="btn-secondary" onClick={() => classify(p.id, 'NO_SHOW')}>No se presentó</button>
-                      <button className="btn-secondary" onClick={() => classify(p.id, 'CANCELLED')}>Canceló</button>
-                      <button className="btn-secondary" onClick={() => classify(p.id, 'RESCHEDULED')}>Reagendó</button>
+                      <button className="btn-secondary" onClick={() => classify(p.id, 'NO_SHOW', 'NO_SE_PRESENTO')}>No se presentó</button>
+                      <button className="btn-secondary" onClick={() => classify(p.id, 'CANCELLED', 'CANCELO')}>Canceló</button>
+                      <button className="btn-secondary" onClick={() => classify(p.id, 'RESCHEDULED', 'REAGENDO')}>Reagendó</button>
                       <button className="btn-primary" onClick={() => setAttendNow(p)}>Atender ahora</button>
                     </div>
                   </div>

@@ -65,7 +65,7 @@ export function AgendaPage() {
   const [selected, setSelected] = useState<Appointment | null>(null);
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
-  const [listFilter, setListFilter] = useState<'pending' | 'other' | 'all'>('all');
+  const [listFilter, setListFilter] = useState<'pending' | 'other' | 'all'>('pending');
 
   const closeDoctorId = seesAll ? doctorId : user?.doctorId || '';
   const canClose = canEdit && Boolean(closeDoctorId);

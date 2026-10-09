@@ -148,7 +148,7 @@ export function TodayPage() {
             <p className="text-xs text-slate-500">{pending.length} pendientes · toca la fila para capturar</p>
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
-            {agenda.map((appt) => {
+            {pending.map((appt) => {
               const canAttend = canEdit && !data?.isClosed;
               const huli = huliAgendaStatus(appt.sourceStatus, appt.attendanceConfirmation);
               return (
@@ -175,8 +175,8 @@ export function TodayPage() {
                 </button>
               );
             })}
-            {!loading && agenda.length === 0 && (
-              <div className="px-4 py-10 text-center text-sm text-slate-500">No hay citas para hoy.</div>
+            {!loading && pending.length === 0 && (
+              <div className="px-4 py-10 text-center text-sm text-slate-500">No hay pacientes pendientes.</div>
             )}
           </div>
         </section>
