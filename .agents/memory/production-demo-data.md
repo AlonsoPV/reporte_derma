@@ -14,3 +14,9 @@ El usuario también autorizó eliminar información demo en producción y desarr
 **Why:** El usuario eligió ambos entornos y la eliminación de cuentas, después de advertirle sobre datos reales y pérdida de accesos.
 
 **How to apply:** No inferir que una atención manual sin marca demo es ficticia por pertenecer a un médico de prueba. Sus vínculos obligan a conservar ese médico y su cuenta. Mantener la auditoría de la eliminación y verificar cada entorno por separado.
+
+El usuario decidió que las cuentas nuevas se creen inactivas y que el administrador asigne contraseñas individuales y las active desde Administración. Los perfiles que la clínica pide conservar dejan de ser candidatos a borrado de cuentas, aunque su identificador antiguo use un dominio demo.
+
+**Why:** El usuario eligió configurar las claves desde Administración y posteriormente especificó el personal que se debe conservar.
+
+**How to apply:** No activar cuentas nuevas ni reutilizar claves demo automáticamente. Proteger el personal designado durante la limpieza de cuentas sin impedir la eliminación de sus registros clínicos marcados como demo.

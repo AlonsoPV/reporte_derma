@@ -1,5 +1,6 @@
 import { prisma } from '../db';
 import type { Prisma } from '@prisma/client';
+import { RETAINED_CLINIC_DOCTORS } from '../../shared/constants';
 
 const demo = { OR: [{ isDemo: true }, { dataSource: 'DEMO' as const }] };
 const demoEmails = ['admin', 'recepcion', 'ana', 'berenice', 'carlos'].map((name) => `${name}@clinicademo.local`);
@@ -45,10 +46,16 @@ export async function cleanupDemoData(actorId: string, apply = false, database =
     }
 
     const users = await tx.user.findMany({
-      where: { email: { in: demoEmails } }, select: { id: true, doctorId: true, role: true, status: true },
+      where: { email: { in: demoEmails } },
+      select: { id: true, name: true, doctorId: true, role: true, status: true, doctor: { select: { name: true } } },
     });
     const userIds: string[] = [];
     for (const user of users) {
+      const explicitlyRetained =
+        (user.role === 'ADMIN' && user.name === 'Administrador') ||
+        (user.role === 'RECEPTION' && user.name === 'RECEPCIÓN') ||
+        (user.role === 'DOCTOR' && RETAINED_CLINIC_DOCTORS.some((name) => name === (user.doctor?.name || user.name)));
+      if (explicitlyRetained) continue;
       const ownedAppointments = user.doctorId ? await tx.appointment.count({
         where: { doctorId: user.doctorId, id: { notIn: appointmentIds } },
       }) : 0;

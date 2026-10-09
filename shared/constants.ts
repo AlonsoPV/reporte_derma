@@ -1,6 +1,14 @@
 export const ROLES = ['ADMIN', 'DOCTOR', 'RECEPTION', 'SUPERVISOR', 'ACCOUNTING'] as const;
 export type Role = (typeof ROLES)[number];
 
+// Staff explicitly retained by the clinic, including legacy accounts with demo-domain identifiers.
+export const RETAINED_CLINIC_DOCTORS = [
+  'Berenice Gomez Tagle Boix',
+  'Luisa Fernanda Martínez Rosas Hijar',
+  'María Alejandra Chacón Ruiz',
+  'Myrna Mariela Elizondo Elizondo',
+] as const;
+
 export function canSeeAll(role?: string | null) {
   return role === 'ADMIN' || role === 'RECEPTION';
 }

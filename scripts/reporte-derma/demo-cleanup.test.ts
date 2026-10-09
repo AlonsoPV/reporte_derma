@@ -155,3 +155,19 @@ test('non-demo appointment alone and import authorship protect otherwise unused 
   assert.equal(state.doctor.some((d) => d.id === 'a'), true);
   assert.equal(state.appointment.some((a) => a.id === 'real-appt'), true);
 });
+
+test('explicitly retained clinic staff survive cleanup even without real clinical records', async () => {
+  const { state, run } = fixture();
+  state.user.find((u) => u.id === 'carlos')!.name = 'Berenice Gomez Tagle Boix';
+  state.user.find((u) => u.id === 'admin')!.name = 'Administrador';
+  state.user.find((u) => u.id === 'reception')!.name = 'RECEPCIÓN';
+  state.attendance = state.attendance.filter((a) => a.id !== 'real');
+  state.user.push({ id: 'another-admin', email: 'owner@example.invalid', role: 'ADMIN', status: 'ACTIVE', doctorId: null });
+  await run(true);
+  assert.equal(state.appointment.length, 0);
+  assert.equal(state.attendance.length, 0);
+  assert.equal(state.user.some((u) => u.id === 'carlos'), true);
+  assert.equal(state.user.some((u) => u.id === 'admin'), true);
+  assert.equal(state.user.some((u) => u.id === 'reception'), true);
+  assert.equal(state.doctor.some((d) => d.id === 'c'), true);
+});
