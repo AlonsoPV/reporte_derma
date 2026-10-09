@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { PrismaClient } from '@prisma/client';
-import { cleanupDemoData } from '../../server/services/demo-cleanup';
+import { cleanupDemoData, type DemoCleanupOptions } from '../../server/services/demo-cleanup';
 
 type Row = Record<string, any>;
 function matches(row: Row, where: Row = {}): boolean {
@@ -78,7 +78,7 @@ function fixture() {
       return result;
     },
   } as unknown as PrismaClient;
-  return { state, run: (apply = false) => cleanupDemoData('admin', apply, database), failAudit: () => { failAudit = true; } };
+  return { state, run: (apply = false, options: DemoCleanupOptions = {}) => cleanupDemoData('admin', apply, database, options), failAudit: () => { failAudit = true; } };
 }
 
 test('preview has no side effects and protects mixed closures, real-linked accounts, last admin', async () => {
@@ -170,4 +170,35 @@ test('explicitly retained clinic staff survive cleanup even without real clinica
   assert.equal(state.user.some((u) => u.id === 'admin'), true);
   assert.equal(state.user.some((u) => u.id === 'reception'), true);
   assert.equal(state.doctor.some((d) => d.id === 'c'), true);
+});
+
+test('patients-only cleanup deletes explicitly confirmed unmarked attendances without changing staff or sessions', async () => {
+  const { state, run } = fixture();
+  const staff = structuredClone({ users: state.user, doctors: state.doctor, sessions: state.session, mappings: state.doctorNameMapping });
+  const options = { patientsOnly: true, confirmedAttendanceIds: ['real'] };
+  const preview = await run(false, options);
+  assert.deepEqual(preview.counts, { appointments: 2, attendances: 3, closures: 2, users: 0, doctors: 0 });
+  assert.equal(state.attendance.length, 3);
+  await run(true, options);
+  assert.equal(state.attendance.length, 0);
+  assert.equal(state.dailyClosure.length, 0);
+  assert.deepEqual({ users: state.user, doctors: state.doctor, sessions: state.session, mappings: state.doctorNameMapping }, staff);
+  assert.equal(state.auditLog.at(-1)?.action, 'DELETE_DEMO_PATIENTS');
+});
+
+test('patients-only cleanup preserves unselected unmarked records and mixed closures', async () => {
+  const { state, run } = fixture();
+  state.attendance.push({ id: 'other-real', doctorId: 'c', attendanceDate: state.attendance[0].attendanceDate, isDemo: false, dataSource: 'MANUAL' });
+  await run(true, { patientsOnly: true, confirmedAttendanceIds: ['real', 'real'] });
+  assert.deepEqual(state.attendance.map((a) => a.id), ['other-real']);
+  assert.deepEqual(state.dailyClosure.map((c) => c.id), ['mixed-close']);
+  assert.equal(state.user.length, 4);
+});
+
+test('invalid explicit selection aborts all deletion and explicit IDs cannot be used with account cleanup', async () => {
+  const { state, run } = fixture();
+  const before = structuredClone(state);
+  await assert.rejects(run(true, { patientsOnly: true, confirmedAttendanceIds: ['missing'] }), /ya no existe/);
+  await assert.rejects(run(true, { confirmedAttendanceIds: ['real'] }), /solo de pacientes/);
+  assert.deepEqual(state, before);
 });

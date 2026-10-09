@@ -1,29 +1,43 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import { z } from 'zod';
 import { prisma } from '../db';
 import { requireAuth, requireRole, getUser } from '../middleware/auth';
 import { userSchema, doctorSchema, doctorMappingSchema } from '../../shared/schemas';
 import { writeAudit } from '../utils';
-import { CLEANUP_CONFIRMATION, cleanupDemoData } from '../services/demo-cleanup';
+import { CLEANUP_CONFIRMATION, PATIENT_CLEANUP_CONFIRMATION, cleanupDemoData } from '../services/demo-cleanup';
 
 const router = Router();
+const cleanupSelection = z.object({
+  patientsOnly: z.boolean().default(false),
+  confirmedAttendanceIds: z.array(z.string().min(1)).max(100).default([]),
+});
 
 router.use(requireAuth, requireRole('ADMIN'));
 
 router.get('/demo-cleanup', async (req, res) => {
   try {
-    res.json(await cleanupDemoData(getUser(req).id));
+    const parsed = cleanupSelection.safeParse({
+      patientsOnly: req.query.patientsOnly === 'true',
+      confirmedAttendanceIds: typeof req.query.confirmedAttendanceIds === 'string'
+        ? req.query.confirmedAttendanceIds.split(',').filter(Boolean) : [],
+    });
+    if (!parsed.success) return res.status(400).json({ error: 'Selección de limpieza inválida.' });
+    res.json(await cleanupDemoData(getUser(req).id, false, prisma, parsed.data));
   } catch (error) {
     res.status((error as Error & { status?: number }).status || 500).json({ error: 'No se pudo revisar la información demo.' });
   }
 });
 
 router.post('/demo-cleanup', async (req, res) => {
-  if (req.body?.confirmation !== CLEANUP_CONFIRMATION) {
-    return res.status(400).json({ error: `Escribe ${CLEANUP_CONFIRMATION} para confirmar la eliminación.` });
+  const parsed = cleanupSelection.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Selección de limpieza inválida.' });
+  const confirmation = parsed.data.patientsOnly ? PATIENT_CLEANUP_CONFIRMATION : CLEANUP_CONFIRMATION;
+  if (req.body?.confirmation !== confirmation) {
+    return res.status(400).json({ error: `Escribe ${confirmation} para confirmar la eliminación.` });
   }
   try {
-    const result = await cleanupDemoData(getUser(req).id, true);
+    const result = await cleanupDemoData(getUser(req).id, true, prisma, parsed.data);
     res.json(result);
   } catch (error) {
     const status = (error as Error & { status?: number }).status;

@@ -20,3 +20,9 @@ El usuario decidió que las cuentas nuevas se creen inactivas y que el administr
 **Why:** El usuario eligió configurar las claves desde Administración y posteriormente especificó el personal que se debe conservar.
 
 **How to apply:** No activar cuentas nuevas ni reutilizar claves demo automáticamente. Proteger el personal designado durante la limpieza de cuentas sin impedir la eliminación de sus registros clínicos marcados como demo.
+
+La limpieza pedida solo de pacientes debe conservar todas las cuentas y médicos. Una atención manual sin marca demo solo se puede incluir si el usuario confirma explícitamente ese registro como de prueba.
+
+**Why:** El usuario distinguió el personal que se debe conservar de los pacientes ficticios y confirmó la eliminación de atenciones manuales identificadas.
+
+**How to apply:** Usar selección por identificador y modo solo de pacientes; nunca deducir que todas las atenciones manuales son demo ni borrar cuentas como efecto secundario.

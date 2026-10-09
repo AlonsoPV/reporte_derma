@@ -5,23 +5,40 @@ import { RETAINED_CLINIC_DOCTORS } from '../../shared/constants';
 const demo = { OR: [{ isDemo: true }, { dataSource: 'DEMO' as const }] };
 const demoEmails = ['admin', 'recepcion', 'ana', 'berenice', 'carlos'].map((name) => `${name}@clinicademo.local`);
 export const CLEANUP_CONFIRMATION = 'BORRAR DEMO Y CUENTAS';
+export const PATIENT_CLEANUP_CONFIRMATION = 'BORRAR PACIENTES DE PRUEBA';
+export type DemoCleanupOptions = {
+  patientsOnly?: boolean;
+  confirmedAttendanceIds?: string[];
+};
 
 /** Recompute the deletion plan inside the same transaction that applies it. */
-export async function cleanupDemoData(actorId: string, apply = false, database = prisma) {
+export async function cleanupDemoData(actorId: string, apply = false, database = prisma, options: DemoCleanupOptions = {}) {
   return database.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT true AS locked FROM pg_advisory_xact_lock(hashtext(${'dermaops-demo-2026-10-08'}))`;
     const actor = await tx.user.findUnique({ where: { id: actorId } });
     if (!actor || actor.role !== 'ADMIN' || actor.status !== 'ACTIVE') {
       throw Object.assign(new Error('Solo un administrador activo puede eliminar información demo.'), { status: 403 });
     }
+    const confirmedIds = [...new Set(options.confirmedAttendanceIds || [])];
+    if (confirmedIds.length) {
+      if (!options.patientsOnly || confirmedIds.length > 100) {
+        throw Object.assign(new Error('Las atenciones confirmadas requieren eliminación solo de pacientes, con un máximo de 100.'), { status: 400 });
+      }
+      const confirmed = await tx.attendance.findMany({ where: { id: { in: confirmedIds } }, select: { id: true } });
+      if (confirmed.length !== confirmedIds.length) {
+        throw Object.assign(new Error('Una atención seleccionada ya no existe. Revisa la selección; no se eliminaron registros.'), { status: 409 });
+      }
+    }
+    const attendanceFilter: Prisma.AttendanceWhereInput = confirmedIds.length
+      ? { OR: [...demo.OR, { id: { in: confirmedIds } }] } : demo;
     const appointments = await tx.appointment.findMany({
-      where: demo, select: { id: true, doctorId: true, appointmentDate: true, attendance: { select: { isDemo: true, dataSource: true } } },
+      where: demo, select: { id: true, doctorId: true, appointmentDate: true, attendance: { select: { id: true, isDemo: true, dataSource: true } } },
     });
     const attendances = await tx.attendance.findMany({
-      where: demo, select: { id: true, doctorId: true, attendanceDate: true },
+      where: attendanceFilter, select: { id: true, doctorId: true, attendanceDate: true },
     });
     // An unmarked attendance is not assumed fictitious, even if linked to a demo appointment.
-    const appointmentIds = appointments.filter((a) => !a.attendance || a.attendance.isDemo || a.attendance.dataSource === 'DEMO').map((a) => a.id);
+    const appointmentIds = appointments.filter((a) => !a.attendance || a.attendance.isDemo || a.attendance.dataSource === 'DEMO' || confirmedIds.includes(a.attendance.id)).map((a) => a.id);
     const attendanceIds = attendances.map((a) => a.id);
     const pairs = new Map<string, { doctorId: string; date: Date }>();
     for (const a of appointments) {
@@ -40,7 +57,7 @@ export async function cleanupDemoData(actorId: string, apply = false, database =
         where: { doctorId: closure.doctorId, appointmentDate: closure.date, NOT: demo },
       });
       const realAttendances = await tx.attendance.count({
-        where: { doctorId: closure.doctorId, attendanceDate: closure.date, NOT: demo },
+        where: { doctorId: closure.doctorId, attendanceDate: closure.date, NOT: attendanceFilter },
       });
       if (realAppointments === 0 && realAttendances === 0) closureIds.push(closure.id);
     }
@@ -55,7 +72,7 @@ export async function cleanupDemoData(actorId: string, apply = false, database =
         (user.role === 'ADMIN' && user.name === 'Administrador') ||
         (user.role === 'RECEPTION' && user.name === 'RECEPCIÓN') ||
         (user.role === 'DOCTOR' && RETAINED_CLINIC_DOCTORS.some((name) => name === (user.doctor?.name || user.name)));
-      if (explicitlyRetained) continue;
+      if (options.patientsOnly || explicitlyRetained) continue;
       const ownedAppointments = user.doctorId ? await tx.appointment.count({
         where: { doctorId: user.doctorId, id: { notIn: appointmentIds } },
       }) : 0;
@@ -116,8 +133,9 @@ export async function cleanupDemoData(actorId: string, apply = false, database =
     const actorDeleted = userIds.includes(actorId);
     await tx.auditLog.create({
       data: {
-        userId: actorDeleted ? null : actorId, action: 'DELETE_DEMO_DATA', entityType: 'demo',
-        entityId: actorId, newValue: { counts, preserved },
+        userId: actorDeleted ? null : actorId,
+        action: options.patientsOnly ? 'DELETE_DEMO_PATIENTS' : 'DELETE_DEMO_DATA', entityType: 'demo',
+        entityId: actorId, newValue: { counts, preserved, confirmedAttendanceIds: confirmedIds },
       },
     });
     return { applied: true, counts, preserved, actorDeleted };

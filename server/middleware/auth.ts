@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import type { SessionUser } from '../shared/types';
+import type { SessionUser } from '../../shared/types';
 
 declare module 'express-session' {
   interface SessionData {
