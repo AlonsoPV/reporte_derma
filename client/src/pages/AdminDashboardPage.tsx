@@ -67,7 +67,7 @@ export function AdminDashboardPage() {
         <KpiGrid
           items={[
             { label: 'Pacientes hoy', value: data.kpis.patientsToday },
-            { label: 'Atendidos', value: data.kpis.attended, accent: 'text-emerald-700' },
+            { label: 'TOTAL ATENDIDOS', value: data.kpis.attended, accent: 'text-emerald-700' },
             { label: 'Pendientes', value: data.kpis.pending, accent: 'text-amber-700' },
             { label: 'No atendidos', value: data.kpis.noShow },
             { label: 'Ingresos', value: money(data.kpis.amount), accent: 'text-brand-700' },
