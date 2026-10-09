@@ -13,6 +13,7 @@ import {
 } from '../utils';
 import { attendSchema, walkInSchema, classifyAppointmentSchema } from '../../shared/schemas';
 import { canSeeAll } from '../../shared/constants';
+import { buildDayKpis } from '../../shared/match';
 import type { OperationalStatus } from '@prisma/client';
 
 const router = Router();
@@ -70,27 +71,24 @@ router.get('/day', requireAuth, async (req, res) => {
 
     const closedDoctorIds = closures.map((c) => c.doctorId);
     const closure = doctorId ? closures.find((c) => c.doctorId === doctorId) || null : null;
+    const kpis = buildDayKpis(appointments, attendances, toNumber);
 
-    const scheduled = appointments.length;
-    const attendedFromAppt = appointments.filter((a) => a.operationalStatus === 'ATTENDED').length;
-    const pending = appointments.length - attendedFromAppt;
-    const cancelledOrNoShow = appointments.filter((a) =>
-      ['NO_SHOW', 'CANCELLED', 'RESCHEDULED'].includes(a.operationalStatus)
-    ).length;
-    const walkIns = attendances.filter((a) => a.origin === 'WALK_IN').length;
-    const amount = attendances.reduce((sum, a) => sum + toNumber(a.amount), 0);
+    const lagged = appointments.filter((a) => a.attendance && a.operationalStatus !== 'ATTENDED');
+    if (lagged.length) {
+      await prisma.appointment.updateMany({
+        where: { id: { in: lagged.map((a) => a.id) } },
+        data: { operationalStatus: 'ATTENDED', noShowReason: null, noShowNotes: null },
+      });
+    }
 
     res.json({
       date: dateStr,
-      kpis: {
-        scheduled,
-        attended: attendedFromAppt + walkIns,
-        pending,
-        cancelledOrNoShow,
-        amount,
-        walkIns,
-      },
-      appointments,
+      kpis,
+      appointments: appointments.map((a) => ({
+        ...a,
+        isAttended: Boolean(a.attendance),
+        operationalStatus: a.attendance ? 'ATTENDED' : a.operationalStatus,
+      })),
       attendances,
       closure,
       closedDoctorIds,
@@ -179,10 +177,6 @@ router.post('/attend', requireAuth, async (req, res) => {
 
     if (!appointment.doctorId) {
       return res.status(400).json({ error: 'La cita no tiene doctor asignado' });
-    }
-
-    if (appointment.operationalStatus === 'ATTENDED') {
-      return res.status(400).json({ error: 'Esta cita ya fue atendida' });
     }
 
     const existing = await prisma.attendance.findUnique({
@@ -323,7 +317,11 @@ router.post('/classify', requireAuth, async (req, res) => {
     if (!appointment) return res.status(404).json({ error: 'Cita no encontrada' });
     assertDoctorAccess(user, appointment.doctorId);
 
-    if (appointment.operationalStatus === 'ATTENDED') {
+    const existingAttendance = await prisma.attendance.findUnique({
+      where: { appointmentId: appointment.id },
+      select: { id: true },
+    });
+    if (existingAttendance || appointment.operationalStatus === 'ATTENDED') {
       return res.status(400).json({ error: 'No se puede clasificar una cita ya atendida' });
     }
 

@@ -6,6 +6,7 @@ import XLSX from 'xlsx';
 import { prisma } from '../db';
 import { requireAuth, requireRole, getUser } from '../middleware/auth';
 import { EXPECTED_EXCEL_COLUMNS } from '../../shared/constants';
+import { normalizeMatchKey } from '../../shared/match';
 import { parseDateOnly, writeAudit, formatDateOnly } from '../utils';
 import type { OperationalStatus } from '@prisma/client';
 
@@ -118,11 +119,11 @@ async function parseWorkbook(filePath: string) {
   );
 
   const mappings = await prisma.doctorNameMapping.findMany();
-  const mapByName = new Map(mappings.map((m) => [m.excelName.trim().toLowerCase(), m.doctorId]));
+  const mapByName = new Map(mappings.map((m) => [normalizeMatchKey(m.excelName), m.doctorId]));
 
   const doctors = await prisma.doctor.findMany();
   for (const d of doctors) {
-    mapByName.set(d.name.trim().toLowerCase(), d.id);
+    mapByName.set(normalizeMatchKey(d.name), d.id);
   }
 
   const errors: Array<{ row: number; message: string }> = [];
@@ -155,7 +156,7 @@ async function parseWorkbook(filePath: string) {
 
     if (sourceDoctorName) doctorsDetected.add(sourceDoctorName);
     const doctorId = sourceDoctorName
-      ? mapByName.get(sourceDoctorName.trim().toLowerCase()) ?? null
+      ? mapByName.get(normalizeMatchKey(sourceDoctorName)) ?? null
       : null;
     if (sourceDoctorName && !doctorId) unmappedDoctors.add(sourceDoctorName);
 

@@ -22,7 +22,10 @@ router.get('/dashboard-admin', requireAuth, async (req, res) => {
     });
 
     const [appointments, attendances, closures] = await Promise.all([
-      prisma.appointment.findMany({ where: { appointmentDate: date } }),
+      prisma.appointment.findMany({
+        where: { appointmentDate: date },
+        include: { attendance: { select: { id: true } } },
+      }),
       prisma.attendance.findMany({ where: { attendanceDate: date } }),
       prisma.dailyClosure.findMany({ where: { date } }),
     ]);
@@ -37,7 +40,7 @@ router.get('/dashboard-admin', requireAuth, async (req, res) => {
         doctor,
         scheduled: appts.length,
         attended,
-        pending: appts.filter((a) => a.operationalStatus === 'PENDING').length,
+        pending: appts.filter((a) => !a.attendance && a.operationalStatus === 'PENDING').length,
         amount,
         ticketAvg: attended ? amount / attended : 0,
         closureStatus: closure?.status === 'CLOSED' ? 'CLOSED' : 'OPEN',
@@ -53,7 +56,7 @@ router.get('/dashboard-admin', requireAuth, async (req, res) => {
       kpis: {
         patientsToday: appointments.length,
         attended: totalAttended,
-        pending: appointments.filter((a) => a.operationalStatus === 'PENDING').length,
+        pending: appointments.filter((a) => !a.attendance && a.operationalStatus === 'PENDING').length,
         noShow: appointments.filter((a) => a.operationalStatus === 'NO_SHOW').length,
         amount: totalAmount,
         ticketAvg: totalAttended ? totalAmount / totalAttended : 0,

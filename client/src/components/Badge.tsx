@@ -10,6 +10,13 @@ const styles: Record<string, string> = {
   CLOSED: 'bg-brand-100 text-brand-800',
   OPEN: 'bg-lime-100 text-lime-800',
   CONFIRMADA: 'bg-emerald-50 text-emerald-700',
+  ACTIVE: 'bg-emerald-100 text-emerald-800',
+  INACTIVE: 'bg-slate-200 text-slate-600',
+  ADMIN: 'bg-brand-100 text-brand-800',
+  DOCTOR: 'bg-sky-100 text-sky-800',
+  RECEPTION: 'bg-violet-100 text-violet-800',
+  SUPERVISOR: 'bg-amber-100 text-amber-800',
+  ACCOUNTING: 'bg-teal-100 text-teal-800',
 };
 
 export function Badge({

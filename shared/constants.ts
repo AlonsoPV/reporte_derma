@@ -9,6 +9,14 @@ export const RETAINED_CLINIC_DOCTORS = [
   'Myrna Mariela Elizondo Elizondo',
 ] as const;
 
+export const ROLE_LABELS: Record<Role, string> = {
+  ADMIN: 'Administrador',
+  DOCTOR: 'Médico',
+  RECEPTION: 'Recepción',
+  SUPERVISOR: 'Supervisor',
+  ACCOUNTING: 'Contabilidad',
+};
+
 export function canSeeAll(role?: string | null) {
   return role === 'ADMIN' || role === 'RECEPTION';
 }

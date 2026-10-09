@@ -15,12 +15,15 @@ const router = Router();
 
 async function buildDaySnapshot(doctorId: string, date: Date) {
   const [appointments, attendances] = await Promise.all([
-    prisma.appointment.findMany({ where: { doctorId, appointmentDate: date } }),
+    prisma.appointment.findMany({
+      where: { doctorId, appointmentDate: date },
+      include: { attendance: { select: { id: true } } },
+    }),
     prisma.attendance.findMany({ where: { doctorId, attendanceDate: date } }),
   ]);
 
   const pending = appointments.filter(
-    (a) => a.operationalStatus !== 'ATTENDED' && !a.noShowReason
+    (a) => !a.attendance && a.operationalStatus === 'PENDING'
   );
   const treatments: Record<string, number> = {};
   const amounts: Record<PaymentMethod, number> = {

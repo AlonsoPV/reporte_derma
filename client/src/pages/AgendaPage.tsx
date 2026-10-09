@@ -9,6 +9,7 @@ import { money } from '../components/KpiGrid';
 import { formatDisplayDate, todayISO } from '../lib/utils';
 import { useAuth } from '../auth/AuthContext';
 import { canSeeAll, isReadOnlyRole, ORIGIN_LABELS } from '@shared/constants';
+import { isOnAgenda, isPendingOnAgenda } from '@shared/match';
 
 type Appointment = {
   id: string;
@@ -24,6 +25,8 @@ type Appointment = {
   doctorId?: string | null;
   doctor?: { name: string } | null;
   externalAppointmentId?: string;
+  isAttended?: boolean;
+  attendance?: { id: string } | null;
 };
 
 type Attendance = {
@@ -100,7 +103,7 @@ export function AgendaPage() {
     const query = q.trim().toLowerCase();
     return (data?.appointments || [])
       .filter((a) => {
-        if (a.operationalStatus === 'ATTENDED') return false;
+        if (!isOnAgenda(a)) return false;
         if (!query) return true;
         return [a.patientName, a.phone, a.externalAppointmentId, a.doctor?.name, a.notes]
           .some((value) => (value || '').toLowerCase().includes(query));
@@ -110,13 +113,13 @@ export function AgendaPage() {
 
   const scheduled = useMemo(() => {
     return agendaPool.filter((a) => {
-      if (listFilter === 'pending') return a.operationalStatus === 'PENDING';
-      if (listFilter === 'other') return a.operationalStatus !== 'PENDING';
+      if (listFilter === 'pending') return isPendingOnAgenda(a);
+      if (listFilter === 'other') return !isPendingOnAgenda(a);
       return true;
     });
   }, [agendaPool, listFilter]);
 
-  const pendingCount = agendaPool.filter((a) => a.operationalStatus === 'PENDING').length;
+  const pendingCount = agendaPool.filter(isPendingOnAgenda).length;
 
   const attended = useMemo(() => {
     return (data?.attendances || []).filter(

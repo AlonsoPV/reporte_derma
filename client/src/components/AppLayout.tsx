@@ -44,7 +44,7 @@ export function AppLayout() {
             <Link to={homePathForRole(user?.role)} className="font-display text-xl font-semibold text-brand-800">
               DermaOps
             </Link>
-            <nav className="hidden items-center gap-1 md:flex">
+            <nav className="hidden items-center gap-1 xl:flex">
               {links.map((l) => (
                 <NavLink
                   key={l.to}
@@ -62,9 +62,9 @@ export function AppLayout() {
             </nav>
           </div>
           <div className="flex items-center gap-3">
-            <div className="text-right">
+            <div className="hidden text-right sm:block">
               <div className="text-sm font-semibold">{user?.name}</div>
-              <div className="text-xs text-slate-500">
+              <div className="max-w-[14rem] truncate text-xs text-slate-500">
                 {roleCaption(user?.role)}
               </div>
             </div>
@@ -79,7 +79,7 @@ export function AppLayout() {
             </button>
           </div>
         </div>
-        <nav className="flex gap-1 overflow-x-auto px-4 pb-3 md:hidden">
+        <nav className="flex gap-1 overflow-x-auto px-4 pb-3 xl:hidden">
           {links.map((l) => (
             <NavLink
               key={l.to}
@@ -96,7 +96,7 @@ export function AppLayout() {
           ))}
         </nav>
       </header>
-      <main className="mx-auto max-w-7xl px-4 py-6">
+      <main className="mx-auto max-w-7xl px-4 py-4 sm:py-6">
         {isReadOnlyRole(user?.role) && (
           <div className="mb-6 rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900">
             Cuenta de recepción: puedes ver toda la operación. No se permiten cambios.

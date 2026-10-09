@@ -5,6 +5,7 @@ import { Badge } from '../components/Badge';
 import { KpiGrid, money } from '../components/KpiGrid';
 import { formatDisplayDate, todayISO } from '../lib/utils';
 import { canSeeAll, isReadOnlyRole } from '@shared/constants';
+import { isOnAgenda, isPendingOnAgenda } from '@shared/match';
 import { AttendModal } from '../components/AttendModal';
 import { WalkInModal } from '../components/WalkInModal';
 import { CloseDayModal } from '../components/CloseDayModal';
@@ -21,6 +22,8 @@ type Appointment = {
   attendanceConfirmation?: string | null;
   operationalStatus: string;
   doctorId?: string | null;
+  isAttended?: boolean;
+  attendance?: { id: string } | null;
 };
 
 type Attendance = {
@@ -77,9 +80,13 @@ export function TodayPage() {
     load().catch(console.error);
   }, []);
 
-  const pending = useMemo(
-    () => data?.appointments.filter((a) => a.operationalStatus !== 'ATTENDED') || [],
+  const agenda = useMemo(
+    () => (data?.appointments || []).filter(isOnAgenda),
     [data]
+  );
+  const pending = useMemo(
+    () => agenda.filter(isPendingOnAgenda),
+    [agenda]
   );
 
   return (
@@ -137,7 +144,7 @@ export function TodayPage() {
             <p className="text-xs text-slate-500">{pending.length} pendientes · toca la fila para capturar</p>
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
-            {(data?.appointments || []).filter((appt) => appt.operationalStatus !== 'ATTENDED').map((appt) => {
+            {agenda.map((appt) => {
               const canAttend = canEdit && !data?.isClosed;
               return (
                 <button
@@ -163,7 +170,7 @@ export function TodayPage() {
                 </button>
               );
             })}
-            {!loading && (data?.appointments || []).filter((appt) => appt.operationalStatus !== 'ATTENDED').length === 0 && (
+            {!loading && agenda.length === 0 && (
               <div className="px-4 py-10 text-center text-sm text-slate-500">No hay citas para hoy.</div>
             )}
           </div>
