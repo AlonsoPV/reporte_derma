@@ -20,6 +20,7 @@ type Attendance = {
   notes?: string | null;
   doctor?: { name: string };
   isDayClosed?: boolean;
+  closureId?: string | null;
 };
 
 export function AttendedPage() {
@@ -46,6 +47,9 @@ export function AttendedPage() {
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [reopenId, setReopenId] = useState<string | null>(null);
+  const [reopenReason, setReopenReason] = useState('');
+  const canReopen = user?.role === 'ADMIN';
 
   useEffect(() => {
     if (seesAll) {
@@ -140,9 +144,9 @@ export function AttendedPage() {
           <p className="text-sm text-slate-600">
             {seesAll
               ? canEdit
-                ? 'Histórico de toda la operación. Los días cerrados solo se consultan.'
+                ? 'Para corregir un atendido: Editar. Si el día ya cerró, un administrador usa Reabrir y luego Editar.'
                 : 'Histórico de toda la operación. Solo consulta.'
-              : 'Solo tu histórico. Los días cerrados no se pueden editar.'}
+              : 'Para corregir: Editar. Si el día está cerrado, un administrador debe reabrirlo.'}
           </p>
         </div>
         <p className="text-sm font-medium text-slate-500">{visible.length} registros</p>
@@ -194,7 +198,11 @@ export function AttendedPage() {
                 <span className="flex shrink-0 gap-1">
                   <button className="btn-ghost px-2 py-1.5" onClick={() => openDetail(r, false)}>Ver</button>
                   {r.isDayClosed ? (
-                    <span className="self-center text-xs font-semibold text-brand-700">Cerrado</span>
+                    canReopen && r.closureId ? (
+                      <button className="btn-secondary px-2 py-1.5" onClick={() => { setReopenId(r.closureId!); setReopenReason(''); setError(''); }}>Reabrir</button>
+                    ) : (
+                      <span className="self-center text-xs font-semibold text-brand-700">Cerrado</span>
+                    )
                   ) : canEdit ? (
                     <button className="btn-secondary px-2 py-1.5" onClick={() => openDetail(r, true)}>Editar</button>
                   ) : null}
@@ -230,8 +238,22 @@ export function AttendedPage() {
             </div>
 
             {selected.isDayClosed && (
-              <div className="mt-3 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-900">
-                Día cerrado. Solo consulta. Un administrador debe reabrir el día para editar.
+              <div className="mt-3 space-y-2 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-900">
+                <p>Día cerrado. Hay que reabrirlo para corregir esta atención.</p>
+                {canReopen && selected.closureId ? (
+                  <button
+                    className="btn-secondary"
+                    onClick={() => {
+                      setReopenId(selected.closureId!);
+                      setReopenReason('');
+                      setError('');
+                    }}
+                  >
+                    Reabrir este día
+                  </button>
+                ) : (
+                  <p>Pide a un administrador que lo reabra desde Atendidos o el Dashboard.</p>
+                )}
               </div>
             )}
 
@@ -297,6 +319,57 @@ export function AttendedPage() {
                   {saving ? 'Guardando…' : 'Guardar cambios'}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {reopenId && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/40 p-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              setReopenId(null);
+              setReopenReason('');
+            }
+          }}
+        >
+          <div className="card w-full max-w-md p-6">
+            <h3 className="font-display text-xl font-semibold">Reabrir día</h3>
+            <p className="mt-1 text-sm text-slate-600">Queda en auditoría. Después podrás editar al atendido.</p>
+            <textarea
+              className="input mt-4 min-h-[100px]"
+              placeholder="Motivo de la corrección *"
+              value={reopenReason}
+              onChange={(e) => setReopenReason(e.target.value)}
+            />
+            {error && <div className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
+            <div className="mt-4 flex gap-2">
+              <button className="btn-secondary flex-1" onClick={() => { setReopenId(null); setReopenReason(''); }}>Cancelar</button>
+              <button
+                className="btn-primary flex-1"
+                onClick={async () => {
+                  if (reopenReason.trim().length < 3) {
+                    setError('Escribe un motivo de al menos 3 caracteres.');
+                    return;
+                  }
+                  setError('');
+                  try {
+                    await api.post('/api/closures/reopen', { closureId: reopenId, reason: reopenReason.trim() });
+                    setReopenId(null);
+                    setReopenReason('');
+                    await load();
+                    if (selected) {
+                      setSelected({ ...selected, isDayClosed: false, closureId: null });
+                      if (canEdit) setEditing(true);
+                    }
+                  } catch (e) {
+                    setError(e instanceof Error ? e.message : 'No se pudo reabrir');
+                  }
+                }}
+              >
+                Confirmar
+              </button>
             </div>
           </div>
         </div>

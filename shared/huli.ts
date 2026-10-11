@@ -39,7 +39,13 @@ export function mapHuliEstado(sourceStatus: string): OperationalStatus {
 export function huliAgendaStatus(
   sourceStatus?: string | null,
   attendanceConfirmation?: string | null,
+  operationalStatus?: string | null,
 ): { status: string; label: string } | null {
+  const clinic = (operationalStatus || '').toUpperCase();
+  if (clinic === 'CANCELLED') return { status: 'CANCELLED', label: 'Cancelada' };
+  if (clinic === 'NO_SHOW') return { status: 'NO_SHOW', label: 'No se presentó' };
+  if (clinic === 'RESCHEDULED') return { status: 'RESCHEDULED', label: 'Reagendada' };
+
   const source = huliText(sourceStatus);
   const confirm = huliText(attendanceConfirmation);
   if (!source && !confirm) return null;

@@ -150,7 +150,7 @@ export function TodayPage() {
           <div className="min-h-0 flex-1 overflow-auto">
             {pending.map((appt) => {
               const canAttend = canEdit && !data?.isClosed;
-              const huli = huliAgendaStatus(appt.sourceStatus, appt.attendanceConfirmation);
+              const huli = huliAgendaStatus(appt.sourceStatus, appt.attendanceConfirmation, appt.operationalStatus);
               return (
                 <button
                   key={appt.id}

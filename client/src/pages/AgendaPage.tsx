@@ -222,7 +222,7 @@ export function AgendaPage() {
             {scheduled.map((r) => {
               const locked = data?.closedDoctorIds?.includes(r.doctorId || '') || data?.isClosed;
               const canAttend = canEdit && !locked;
-              const huli = huliAgendaStatus(r.sourceStatus, r.attendanceConfirmation);
+              const huli = huliAgendaStatus(r.sourceStatus, r.attendanceConfirmation, r.operationalStatus);
               return (
                 <button
                   key={r.id}

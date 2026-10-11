@@ -52,7 +52,9 @@ export function AdminDashboardPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl font-semibold">Dashboard administrativo</h1>
-          <p className="text-slate-600">{formatDisplayDate(date)}</p>
+          <p className="text-slate-600">
+            {formatDisplayDate(date)}. Si un día está cerrado y hay que corregir un atendido, usa Reabrir y luego edita en Atendidos.
+          </p>
         </div>
         <div className="flex gap-2">
           <button className="btn-secondary" onClick={() => setDate((d) => shiftDate(d, -1))}>←</button>

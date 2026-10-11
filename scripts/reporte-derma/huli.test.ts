@@ -35,4 +35,13 @@ test('Huli Estado values map to operational status and agenda badge', () => {
   assert.deepEqual(huliAgendaStatus('Agendada', 'Confirmada'), { status: 'CONFIRMADA', label: 'Confirmada' });
   assert.deepEqual(huliAgendaStatus('Agendada', 'Sin confirmar'), { status: 'PENDING', label: 'Sin confirmar' });
   assert.deepEqual(huliAgendaStatus('Reagendada', 'Sin confirmar'), { status: 'RESCHEDULED', label: 'Reagendada' });
+  assert.deepEqual(huliAgendaStatus('Reagendada', 'Confirmada'), { status: 'RESCHEDULED', label: 'Reagendada' });
+  assert.deepEqual(
+    huliAgendaStatus('Agendada', 'Confirmada', 'CANCELLED'),
+    { status: 'CANCELLED', label: 'Cancelada' },
+  );
+  assert.deepEqual(
+    huliAgendaStatus('Agendada', 'Confirmada', 'NO_SHOW'),
+    { status: 'NO_SHOW', label: 'No se presentó' },
+  );
 });

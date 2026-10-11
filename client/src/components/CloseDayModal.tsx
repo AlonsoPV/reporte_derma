@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { money } from './KpiGrid';
 import { AttendModal } from './AttendModal';
+import { huliAgendaStatus } from '@shared/huli';
 import { toTime24h } from '@shared/time';
 
 type Pending = {
@@ -109,11 +110,13 @@ export function CloseDayModal({
                 Confirma los {preview.pending.length} pacientes que no fueron atendidos. Aunque la agenda los marque como cancelados, este dato lo confirmas tú al cerrar el día.
               </div>
               <div className="mt-4 space-y-4">
-                {preview.pending.map((p) => (
+                {preview.pending.map((p) => {
+                  const huli = huliAgendaStatus(p.sourceStatus, p.attendanceConfirmation, p.operationalStatus);
+                  return (
                   <div key={p.id} className="rounded-xl bg-white p-4">
                     <div className="font-medium">{toTime24h(p.startTime)} · {p.patientName}</div>
-                    {p.sourceStatus && (
-                      <div className="mt-1 text-sm text-slate-500">En la agenda: {p.sourceStatus}</div>
+                    {huli && (
+                      <div className="mt-1 text-sm text-slate-500">En la agenda: {huli.label}</div>
                     )}
                     <input
                       className="input mt-3"
@@ -128,7 +131,8 @@ export function CloseDayModal({
                       <button className="btn-primary" onClick={() => setAttendNow(p)}>Atender ahora</button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

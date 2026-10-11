@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { api } from '../lib/api';
 import { nowTime } from '../lib/utils';
+import { Badge } from './Badge';
+import { huliAgendaStatus } from '@shared/huli';
 import { toTime24h } from '@shared/time';
 
 type Appointment = {
@@ -13,6 +15,7 @@ type Appointment = {
   notes?: string | null;
   sourceStatus?: string | null;
   attendanceConfirmation?: string | null;
+  operationalStatus?: string | null;
 };
 
 export function AttendModal({
@@ -52,6 +55,12 @@ export function AttendModal({
     }
   };
 
+  const huli = huliAgendaStatus(
+    appointment.sourceStatus,
+    appointment.attendanceConfirmation,
+    appointment.operationalStatus,
+  );
+
   const markNoShow = async () => {
     setSaving(true);
     setError('');
@@ -89,8 +98,10 @@ export function AttendModal({
               <div>Teléfono: {appointment.phone || '—'}</div>
               <div>Correo: {appointment.email || '—'}</div>
               <div>Hora programada: {toTime24h(appointment.startTime)}</div>
-              <div>Estado Huli: {appointment.sourceStatus || '—'}</div>
-              <div>Asistencia: {appointment.attendanceConfirmation || '—'}</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span>Estado Huli:</span>
+                {huli ? <Badge status={huli.status} label={huli.label} /> : <span>—</span>}
+              </div>
               <div>Notas: {appointment.notes || '—'}</div>
             </div>
           </div>

@@ -401,16 +401,20 @@ router.get('/attendances', requireAuth, async (req, res) => {
             status: 'CLOSED',
             OR: attendances.map((a) => ({ doctorId: a.doctorId, date: a.attendanceDate })),
           },
-          select: { doctorId: true, date: true },
+          select: { id: true, doctorId: true, date: true },
         })
       : [];
-    const closedSet = new Set(closed.map((c) => `${c.doctorId}|${formatDateOnly(c.date)}`));
+    const closedMap = new Map(closed.map((c) => [`${c.doctorId}|${formatDateOnly(c.date)}`, c.id]));
 
     res.json({
-      attendances: attendances.map((a) => ({
-        ...a,
-        isDayClosed: closedSet.has(`${a.doctorId}|${formatDateOnly(a.attendanceDate)}`),
-      })),
+      attendances: attendances.map((a) => {
+        const key = `${a.doctorId}|${formatDateOnly(a.attendanceDate)}`;
+        return {
+          ...a,
+          isDayClosed: closedMap.has(key),
+          closureId: closedMap.get(key) || null,
+        };
+      }),
     });
   } catch (e) {
     const err = e as Error & { status?: number };
