@@ -7,6 +7,7 @@ import {
   resolveDoctorFilter,
   formatDateOnly,
   parseDateOnly,
+  publicError,
   toNumber,
   todayInMexico,
   writeAudit,
@@ -241,7 +242,7 @@ router.post('/attend', requireAuth, async (req, res) => {
   } catch (e) {
     const err = e as Error & { status?: number };
     console.error(e);
-    res.status(err.status ?? 500).json({ error: err.message || 'Error al atender' });
+    res.status(err.status ?? 500).json({ error: publicError(e, 'Error al atender') });
   }
 });
 
@@ -309,7 +310,7 @@ router.post('/walk-in', requireAuth, async (req, res) => {
   } catch (e) {
     const err = e as Error & { status?: number };
     console.error(e);
-    res.status(err.status ?? 500).json({ error: err.message || 'Error al registrar paciente sin cita' });
+    res.status(err.status ?? 500).json({ error: publicError(e, 'Error al registrar paciente sin cita') });
   }
 });
 

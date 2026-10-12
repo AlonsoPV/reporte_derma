@@ -85,6 +85,15 @@ export function assertDoctorAccess(user: SessionUser, doctorId: string | null | 
   }
 }
 
+export function publicError(e: unknown, fallback: string) {
+  const err = e as { status?: number; code?: string; message?: string };
+  if (err.status && err.message) return err.message;
+  if (err.code === 'P2002' || /unique constraint failed/i.test(err.message || '')) {
+    return 'No se pudieron guardar varios procedimientos. Recarga e intenta de nuevo.';
+  }
+  return err.message || fallback;
+}
+
 export async function assertDayOpen(doctorId: string | null | undefined, date: Date) {
   if (!doctorId) return;
   const closed = await prisma.dailyClosure.findUnique({
