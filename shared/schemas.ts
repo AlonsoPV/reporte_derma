@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { NO_SHOW_REASONS, PAYMENT_METHODS } from './constants';
+import { NO_SHOW_REASONS, PAYMENT_METHODS, PROCEDURES } from './constants';
+
+export const attendanceLineSchema = z.object({
+  treatment: z.enum(PROCEDURES, { errorMap: () => ({ message: 'Selecciona un procedimiento de la lista' }) }),
+  amount: z.number().positive('El monto debe ser mayor a 0'),
+  notes: z.string().optional(),
+});
 
 export const loginSchema = z
   .object({
@@ -19,10 +25,8 @@ export const loginSchema = z
 export const attendSchema = z.object({
   appointmentId: z.string().min(1),
   actualTime: z.string().min(1, 'Hora de atención requerida'),
-  treatment: z.string().min(1, 'Tratamiento obligatorio'),
-  amount: z.number().positive('El monto debe ser mayor a 0'),
   paymentMethod: z.enum(PAYMENT_METHODS).optional(),
-  notes: z.string().optional(),
+  items: z.array(attendanceLineSchema).min(1, 'Agrega al menos una atención'),
 });
 
 export const walkInSchema = z.object({
@@ -31,12 +35,10 @@ export const walkInSchema = z.object({
   email: z.string().email().optional().or(z.literal('')),
   birthDate: z.string().optional(),
   actualTime: z.string().min(1, 'Hora de atención requerida'),
-  treatment: z.string().min(1, 'Tratamiento obligatorio'),
-  amount: z.number().positive('El monto debe ser mayor a 0'),
   paymentMethod: z.enum(PAYMENT_METHODS).optional(),
-  notes: z.string().optional(),
   doctorId: z.string().optional(),
   attendanceDate: z.string().optional(),
+  items: z.array(attendanceLineSchema).min(1, 'Agrega al menos una atención'),
 });
 
 export const classifyAppointmentSchema = z.object({

@@ -19,8 +19,33 @@ export function namesMatch(left: string | null | undefined, right: string | null
   return Boolean(a && b && a === b);
 }
 
-export function hasLinkedAttendance(appointment: { attendance?: unknown | null; isAttended?: boolean }) {
+export function matchDoctorId(
+  excelName: string | null | undefined,
+  doctors: Array<{ id: string; name: string }>,
+  mappedNames?: Map<string, string>,
+): string | null {
+  const key = normalizeMatchKey(excelName);
+  if (!key) return null;
+  if (mappedNames?.has(key)) return mappedNames.get(key) || null;
+  const exact = doctors.find((d) => normalizeMatchKey(d.name) === key);
+  if (exact) return exact.id;
+  const tokens = key.split(' ').filter((t) => t.length > 1);
+  if (tokens.length < 2) return null;
+  const hits = doctors.filter((d) => {
+    const n = normalizeMatchKey(d.name);
+    if (n.includes(key) || key.includes(n)) return true;
+    return tokens.every((t) => n.includes(t));
+  });
+  return hits.length === 1 ? hits[0].id : null;
+}
+
+export function hasLinkedAttendance(appointment: {
+  attendance?: unknown | null;
+  attendances?: unknown[] | null;
+  isAttended?: boolean;
+}) {
   if (typeof appointment.isAttended === 'boolean') return appointment.isAttended;
+  if (Array.isArray(appointment.attendances)) return appointment.attendances.length > 0;
   return Boolean(appointment.attendance);
 }
 

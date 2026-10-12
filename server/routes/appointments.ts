@@ -52,7 +52,7 @@ router.get('/day', requireAuth, async (req, res) => {
     const [appointments, attendances, closures] = await Promise.all([
       prisma.appointment.findMany({
         where: whereAppt,
-        include: { doctor: true, attendance: true },
+        include: { doctor: true, attendances: { select: { id: true } } },
         orderBy: { startTime: 'asc' },
       }),
       prisma.attendance.findMany({
@@ -73,7 +73,7 @@ router.get('/day', requireAuth, async (req, res) => {
     const closure = doctorId ? closures.find((c) => c.doctorId === doctorId) || null : null;
     const kpis = buildDayKpis(appointments, attendances, toNumber);
 
-    const lagged = appointments.filter((a) => a.attendance && a.operationalStatus !== 'ATTENDED');
+    const lagged = appointments.filter((a) => a.attendances.length && a.operationalStatus !== 'ATTENDED');
     if (lagged.length) {
       await prisma.appointment.updateMany({
         where: { id: { in: lagged.map((a) => a.id) } },
@@ -86,8 +86,8 @@ router.get('/day', requireAuth, async (req, res) => {
       kpis,
       appointments: appointments.map((a) => ({
         ...a,
-        isAttended: Boolean(a.attendance),
-        operationalStatus: a.attendance ? 'ATTENDED' : a.operationalStatus,
+        isAttended: a.attendances.length > 0,
+        operationalStatus: a.attendances.length ? 'ATTENDED' : a.operationalStatus,
       })),
       attendances,
       closure,
@@ -134,7 +134,7 @@ router.get('/appointments', requireAuth, async (req, res) => {
 
     const appointments = await prisma.appointment.findMany({
       where,
-      include: { doctor: true, attendance: true },
+      include: { doctor: true, attendances: { select: { id: true } } },
       orderBy: [{ appointmentDate: 'desc' }, { startTime: 'asc' }],
       take: 500,
     });
@@ -151,7 +151,7 @@ router.get('/appointments/:id', requireAuth, async (req, res) => {
     const user = getUser(req);
     const appointment = await prisma.appointment.findUnique({
       where: { id: req.params.id },
-      include: { doctor: true, attendance: true },
+      include: { doctor: true, attendances: { select: { id: true } } },
     });
     if (!appointment) return res.status(404).json({ error: 'Cita no encontrada' });
     assertDoctorAccess(user, appointment.doctorId);
@@ -179,8 +179,9 @@ router.post('/attend', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'La cita no tiene doctor asignado' });
     }
 
-    const existing = await prisma.attendance.findUnique({
+    const existing = await prisma.attendance.findFirst({
       where: { appointmentId: appointment.id },
+      select: { id: true },
     });
     if (existing) {
       return res.status(400).json({ error: 'Ya existe un registro de atención para esta cita' });
@@ -189,46 +190,48 @@ router.post('/attend', requireAuth, async (req, res) => {
     await assertDayOpen(appointment.doctorId, appointment.appointmentDate);
 
     const result = await prisma.$transaction(async (tx) => {
-      const attendance = await tx.attendance.create({
-        data: {
-          appointmentId: appointment.id,
-          doctorId: appointment.doctorId!,
-          patientName: appointment.patientName,
-          phone: appointment.phone,
-          email: appointment.email,
-          birthDate: appointment.birthDate,
-          scheduledTime: appointment.startTime,
-          actualTime: data.actualTime,
-          treatment: data.treatment.trim(),
-          amount: data.amount,
-          paymentMethod: data.paymentMethod || 'OTHER',
-          notes: data.notes,
-          origin: 'SCHEDULED',
-          dataSource: 'MANUAL',
-          isDemo: appointment.isDemo,
-          attendanceDate: appointment.appointmentDate,
-          createdById: user.id,
-        },
-        include: { doctor: true },
-      });
+      const attendances = [];
+      for (const item of data.items) {
+        attendances.push(await tx.attendance.create({
+          data: {
+            appointmentId: appointment.id,
+            doctorId: appointment.doctorId!,
+            patientName: appointment.patientName,
+            phone: appointment.phone,
+            email: appointment.email,
+            birthDate: appointment.birthDate,
+            scheduledTime: appointment.startTime,
+            actualTime: data.actualTime,
+            treatment: item.treatment,
+            amount: item.amount,
+            paymentMethod: data.paymentMethod || 'OTHER',
+            notes: item.notes || null,
+            origin: 'SCHEDULED',
+            dataSource: 'MANUAL',
+            isDemo: appointment.isDemo,
+            attendanceDate: appointment.appointmentDate,
+            createdById: user.id,
+          },
+          include: { doctor: true },
+        }));
+      }
 
       const updated = await tx.appointment.update({
         where: { id: appointment.id },
         data: { operationalStatus: 'ATTENDED', noShowReason: null, noShowNotes: null },
       });
 
-      return { attendance, appointment: updated };
+      return { attendances, appointment: updated };
     });
 
     await writeAudit({
       userId: user.id,
       action: 'ATTEND',
       entityType: 'attendance',
-      entityId: result.attendance.id,
+      entityId: result.attendances[0]?.id,
       previousValue: { operationalStatus: appointment.operationalStatus },
       newValue: {
-        treatment: data.treatment,
-        amount: data.amount,
+        items: data.items,
         paymentMethod: data.paymentMethod,
         appointmentId: appointment.id,
       },
@@ -268,35 +271,41 @@ router.post('/walk-in', requireAuth, async (req, res) => {
 
     await assertDayOpen(doctorId, date);
 
-    const attendance = await prisma.attendance.create({
-      data: {
-        doctorId,
-        patientName: data.patientName.trim(),
-        phone: data.phone || null,
-        email: data.email || null,
-        birthDate: data.birthDate ? parseDateOnly(data.birthDate) : null,
-        actualTime: data.actualTime,
-        treatment: data.treatment.trim(),
-        amount: data.amount,
-        paymentMethod: data.paymentMethod || 'OTHER',
-        notes: data.notes,
-        origin: 'WALK_IN',
-        dataSource: 'MANUAL',
-        attendanceDate: date,
-        createdById: user.id,
-      },
-      include: { doctor: true },
+    const attendances = await prisma.$transaction(async (tx) => {
+      const created = [];
+      for (const item of data.items) {
+        created.push(await tx.attendance.create({
+          data: {
+            doctorId,
+            patientName: data.patientName.trim(),
+            phone: data.phone || null,
+            email: data.email || null,
+            birthDate: data.birthDate ? parseDateOnly(data.birthDate) : null,
+            actualTime: data.actualTime,
+            treatment: item.treatment,
+            amount: item.amount,
+            paymentMethod: data.paymentMethod || 'OTHER',
+            notes: item.notes || null,
+            origin: 'WALK_IN',
+            dataSource: 'MANUAL',
+            attendanceDate: date,
+            createdById: user.id,
+          },
+          include: { doctor: true },
+        }));
+      }
+      return created;
     });
 
     await writeAudit({
       userId: user.id,
       action: 'WALK_IN',
       entityType: 'attendance',
-      entityId: attendance.id,
-      newValue: attendance,
+      entityId: attendances[0]?.id,
+      newValue: { items: data.items, patientName: data.patientName },
     });
 
-    res.json({ attendance });
+    res.json({ attendances });
   } catch (e) {
     const err = e as Error & { status?: number };
     console.error(e);
@@ -317,7 +326,7 @@ router.post('/classify', requireAuth, async (req, res) => {
     if (!appointment) return res.status(404).json({ error: 'Cita no encontrada' });
     assertDoctorAccess(user, appointment.doctorId);
 
-    const existingAttendance = await prisma.attendance.findUnique({
+    const existingAttendance = await prisma.attendance.findFirst({
       where: { appointmentId: appointment.id },
       select: { id: true },
     });
@@ -536,7 +545,7 @@ router.patch('/appointments/:id', requireAuth, async (req, res) => {
     const updated = await prisma.appointment.update({
       where: { id: existing.id },
       data,
-      include: { doctor: true, attendance: true },
+      include: { doctor: true, attendances: { select: { id: true } } },
     });
 
     await writeAudit({

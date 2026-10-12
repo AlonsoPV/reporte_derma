@@ -44,6 +44,17 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 export const ATTENDANCE_ORIGINS = ['SCHEDULED', 'WALK_IN'] as const;
 export type AttendanceOrigin = (typeof ATTENDANCE_ORIGINS)[number];
 
+export const PROCEDURES = [
+  'Aparatología Estética',
+  'Cirugía',
+  'Consulta',
+  'Procedimiento Capilar',
+  'Botox y Rellenos',
+  'Procedimiento Médico',
+  'Revisión',
+] as const;
+export type Procedure = (typeof PROCEDURES)[number];
+
 export const NO_SHOW_REASONS = [
   'NO_SE_PRESENTO',
   'CANCELO',

@@ -83,7 +83,7 @@ export async function seedDemoDay(actorId?: string, database = prisma) {
         if (index === 1) attendedAppointmentId = appointment.id;
       }
 
-      const scheduled = await tx.attendance.findUnique({ where: { appointmentId: attendedAppointmentId } });
+      const scheduled = await tx.attendance.findFirst({ where: { appointmentId: attendedAppointmentId } });
       if (scheduled && (!scheduled.isDemo || scheduled.dataSource !== 'DEMO' ||
           scheduled.doctorId !== doctor.id || scheduled.origin !== 'SCHEDULED' ||
           scheduled.attendanceDate.getTime() !== date.getTime())) {

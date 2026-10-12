@@ -64,6 +64,7 @@ export function TodayPage() {
   const [selected, setSelected] = useState<Appointment | null>(null);
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
+  const [listFilter, setListFilter] = useState<'pending' | 'other' | 'all'>('all');
 
   const load = async () => {
     setLoading(true);
@@ -88,10 +89,14 @@ export function TodayPage() {
       .sort((a, b) => compareTimes(a.startTime, b.startTime) || a.patientName.localeCompare(b.patientName, 'es')),
     [data]
   );
-  const pending = useMemo(
-    () => agenda.filter(isPendingOnAgenda),
-    [agenda]
-  );
+  const pendingCount = agenda.filter(isPendingOnAgenda).length;
+  const scheduled = useMemo(() => {
+    return agenda.filter((a) => {
+      if (listFilter === 'pending') return isPendingOnAgenda(a);
+      if (listFilter === 'other') return !isPendingOnAgenda(a);
+      return true;
+    });
+  }, [agenda, listFilter]);
 
   return (
     <div className="space-y-6">
@@ -104,7 +109,7 @@ export function TodayPage() {
           </p>
           <p className="mt-1 text-sm text-slate-500">
             {canEdit
-              ? 'Solo para atender a los pacientes de hoy. El histórico está en Atendidos.'
+              ? 'Solo los pacientes de hoy. El histórico está en Atendidos.'
               : 'Consulta de los pacientes de hoy. El histórico está en Atendidos.'}
           </p>
         </div>
@@ -143,12 +148,30 @@ export function TodayPage() {
 
       <div className="grid items-start gap-4 md:grid-cols-2">
         <section className="card flex max-h-[70vh] flex-col overflow-hidden">
-          <div className="border-b border-slate-100 px-3 py-3">
-            <h2 className="font-semibold">Por atender</h2>
-            <p className="text-xs text-slate-500">{pending.length} pendientes · toca la fila para capturar</p>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3 py-3">
+            <div>
+              <h2 className="font-semibold">Por atender</h2>
+              <p className="text-xs text-slate-500">{pendingCount} pendientes · toca la fila para capturar</p>
+            </div>
+            <div className="flex flex-wrap rounded-xl bg-slate-100 p-1 text-xs font-semibold">
+              {([
+                ['pending', `Pendientes ${pendingCount}`],
+                ['other', `Otros ${agenda.length - pendingCount}`],
+                ['all', 'Todos'],
+              ] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={listFilter === id ? 'rounded-lg bg-white px-2.5 py-1 text-brand-800 shadow-sm' : 'rounded-lg px-2.5 py-1 text-slate-500'}
+                  onClick={() => setListFilter(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
-            {pending.map((appt) => {
+            {scheduled.map((appt) => {
               const canAttend = canEdit && !data?.isClosed;
               const huli = huliAgendaStatus(appt.sourceStatus, appt.attendanceConfirmation, appt.operationalStatus);
               return (
@@ -175,8 +198,14 @@ export function TodayPage() {
                 </button>
               );
             })}
-            {!loading && pending.length === 0 && (
-              <div className="px-4 py-10 text-center text-sm text-slate-500">No hay pacientes pendientes.</div>
+            {!loading && scheduled.length === 0 && (
+              <div className="px-4 py-10 text-center text-sm text-slate-500">
+                {listFilter !== 'all' && agenda.length > 0
+                  ? listFilter === 'pending'
+                    ? 'No hay pendientes. Revisa Otros o Todos para ver reagendadas, canceladas o no presentados.'
+                    : 'Nada en Otros. Revisa Pendientes o Todos.'
+                  : 'No hay pacientes en tu agenda de hoy.'}
+              </div>
             )}
           </div>
         </section>
@@ -212,6 +241,7 @@ export function TodayPage() {
           onClose={() => setSelected(null)}
           onSaved={async () => {
             setSelected(null);
+            setListFilter('all');
             await load();
           }}
         />

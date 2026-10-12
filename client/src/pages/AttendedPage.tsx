@@ -5,7 +5,7 @@ import { money } from '../components/KpiGrid';
 import { DateQuickFilters } from '../components/DateQuickFilters';
 import { resolveDatePreset } from '../lib/utils';
 import { toTime24h } from '@shared/time';
-import { canSeeAll, isReadOnlyRole, ORIGIN_LABELS } from '@shared/constants';
+import { canSeeAll, isReadOnlyRole, ORIGIN_LABELS, PROCEDURES } from '@shared/constants';
 
 type Attendance = {
   id: string;
@@ -288,8 +288,15 @@ export function AttendedPage() {
                   <input className="input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
                 </div>
                 <div>
-                  <label className="label">Tratamiento *</label>
-                  <input className="input" value={form.treatment} onChange={(e) => setForm({ ...form, treatment: e.target.value })} />
+                  <label className="label">Procedimiento *</label>
+                  <select className="input" value={form.treatment} onChange={(e) => setForm({ ...form, treatment: e.target.value })}>
+                    {!PROCEDURES.includes(form.treatment as (typeof PROCEDURES)[number]) && form.treatment && (
+                      <option value={form.treatment}>{form.treatment}</option>
+                    )}
+                    {PROCEDURES.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="label">Monto *</label>

@@ -56,7 +56,7 @@ function fixture() {
       const tx: Row = { $queryRaw: async () => [{ locked: true }] };
       for (const model of Object.keys(pending)) {
         const rows = () => pending[model].map((row) => model === 'appointment'
-          ? { ...row, attendance: pending.attendance.find((a) => a.appointmentId === row.id) || null } : row);
+          ? { ...row, attendances: pending.attendance.filter((a) => a.appointmentId === row.id) } : row);
         tx[model] = {
           findUnique: async ({ where }: Row) => rows().find((row) => matches(row, where)) || null,
           findMany: async ({ where }: Row = {}) => rows().filter((row) => matches(row, where)),

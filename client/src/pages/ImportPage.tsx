@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { EXPECTED_EXCEL_COLUMNS } from '@shared/constants';
+import { formatDisplayDate, todayISO } from '../lib/utils';
 
 type PreviewSummary = {
   rowsDetected: number;
@@ -13,6 +15,7 @@ type PreviewSummary = {
   unmappedDoctors: string[];
   errors: Array<{ row: number; message: string }>;
   missingColumns: string[];
+  dateCounts?: Record<string, number>;
 };
 
 export function ImportPage() {
@@ -23,6 +26,7 @@ export function ImportPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  const [importedDates, setImportedDates] = useState<Record<string, number>>({});
 
   const preview = async () => {
     if (!file) return;
@@ -56,7 +60,7 @@ export function ImportPage() {
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-3xl font-semibold">Importar Excel (Huli)</h1>
-        <p className="text-slate-600">Exporta el reporte de citas de Huli y cárgalo aquí. Las horas llegan como 1:00 PM y se guardan en 24 h. Confirmación por ID cita.</p>
+        <p className="text-slate-600">Exporta el reporte de citas de Huli y cárgalo aquí. Las citas aparecen en Agenda en la fecha de la columna Fecha, no siempre en Hoy.</p>
         <p className="mt-1 text-xs text-slate-500">Columnas: {EXPECTED_EXCEL_COLUMNS.join(', ')}.</p>
       </div>
 
@@ -79,7 +83,24 @@ export function ImportPage() {
           {loading ? 'Analizando…' : 'Analizar archivo'}
         </button>
         {error && <div className="rounded-xl bg-rose-50 px-4 py-3 text-rose-700">{error}</div>}
-        {done && <div className="rounded-xl bg-emerald-50 px-4 py-3 text-emerald-800">Importación confirmada correctamente.</div>}
+        {done && (
+          <div className="rounded-xl bg-emerald-50 px-4 py-3 text-emerald-800">
+            <p>Importación confirmada. Las citas se ven en Agenda, en la fecha del Excel.</p>
+            {Object.keys(importedDates).length > 0 && (
+              <ul className="mt-2 space-y-1 text-sm">
+                {Object.entries(importedDates).sort(([a], [b]) => a.localeCompare(b)).map(([date, count]) => (
+                  <li key={date}>
+                    <Link className="font-semibold underline" to={`/agenda?date=${date}`}>
+                      {formatDisplayDate(date)}
+                    </Link>
+                    {` · ${count} ${count === 1 ? 'cita' : 'citas'}`}
+                    {date === todayISO() ? ' · hoy' : ''}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
 
       {summary && (
@@ -103,6 +124,20 @@ export function ImportPage() {
               </div>
             ))}
           </div>
+
+          {summary.dateCounts && Object.keys(summary.dateCounts).length > 0 && (
+            <div className="rounded-xl border border-slate-200 px-4 py-3 text-sm">
+              <h3 className="font-medium">Fechas detectadas</h3>
+              <ul className="mt-2 space-y-1 text-slate-700">
+                {Object.entries(summary.dateCounts).sort(([a], [b]) => a.localeCompare(b)).map(([date, count]) => (
+                  <li key={date}>
+                    {formatDisplayDate(date)} · {count} {count === 1 ? 'cita' : 'citas'}
+                    {date === todayISO() ? ' · hoy' : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <div className="grid gap-4 md:grid-cols-2">
             <div>
@@ -151,6 +186,7 @@ export function ImportPage() {
                 setLoading(true);
                 try {
                   await api.post(`/api/imports/confirm/${importId}`);
+                  setImportedDates(summary.dateCounts || {});
                   setDone(true);
                   setSummary(null);
                   setImportId(null);

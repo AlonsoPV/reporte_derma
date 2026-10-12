@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { nowTime } from '../lib/utils';
 import { useAuth } from '../auth/AuthContext';
+import { ProcedureLinesEditor, type ProcedureLine } from './ProcedureLines';
 
 export function WalkInModal({
   date,
@@ -20,9 +21,7 @@ export function WalkInModal({
   const [email, setEmail] = useState('');
   const [birthDate, setBirthDate] = useState('');
   const [actualTime, setActualTime] = useState(nowTime());
-  const [treatment, setTreatment] = useState('');
-  const [amount, setAmount] = useState('');
-  const [notes, setNotes] = useState('');
+  const [lines, setLines] = useState<ProcedureLine[]>([]);
   const [doctorId, setDoctorId] = useState(initialDoctorId || user?.doctorId || '');
   const [doctors, setDoctors] = useState<Array<{ id: string; name: string }>>([]);
   const [error, setError] = useState('');
@@ -53,6 +52,10 @@ export function WalkInModal({
           className="space-y-4 px-6 py-5"
           onSubmit={async (e) => {
             e.preventDefault();
+            if (!lines.length) {
+              setError('Agrega al menos una atención.');
+              return;
+            }
             setSaving(true);
             setError('');
             try {
@@ -62,11 +65,13 @@ export function WalkInModal({
                 email,
                 birthDate: birthDate || undefined,
                 actualTime,
-                treatment,
-                amount: Number(amount),
-                notes,
                 attendanceDate: date,
                 doctorId: user?.role === 'ADMIN' ? doctorId : undefined,
+                items: lines.map((line) => ({
+                  treatment: line.treatment,
+                  amount: Number(line.amount),
+                  notes: line.notes || undefined,
+                })),
               });
               onSaved();
             } catch (err) {
@@ -111,22 +116,11 @@ export function WalkInModal({
               <input className="input" type="time" value={actualTime} onChange={(e) => setActualTime(e.target.value)} required />
             </div>
           </div>
-          <div>
-            <label className="label">Procedimiento *</label>
-            <input className="input" value={treatment} onChange={(e) => setTreatment(e.target.value)} placeholder="Consulta, Botox, Láser…" required />
-          </div>
-          <div>
-            <label className="label">Monto a cobrar *</label>
-            <input className="input" type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
-          </div>
-          <div>
-            <label className="label">Notas</label>
-            <textarea className="input min-h-[80px]" value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </div>
+          <ProcedureLinesEditor lines={lines} onChange={setLines} />
           {error && <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
           <div className="flex gap-2 pt-2">
             <button type="button" className="btn-secondary flex-1" onClick={onClose}>Cancelar</button>
-            <button className="btn-primary flex-1" disabled={saving}>{saving ? 'Guardando…' : 'Agregar a atendidos'}</button>
+            <button className="btn-primary flex-1" disabled={saving || lines.length === 0}>{saving ? 'Guardando…' : 'Agregar a atendidos'}</button>
           </div>
         </form>
       </div>

@@ -128,7 +128,7 @@ model Appointment {
   createdAt               DateTime          @default(now())
   updatedAt               DateTime          @updatedAt
 
-  attendance Attendance?
+  attendances Attendance[]
 
   @@index([appointmentDate, doctorId])
   @@index([operationalStatus])
@@ -138,7 +138,7 @@ model Appointment {
 
 model Attendance {
   id             String           @id @default(cuid())
-  appointmentId  String?          @unique
+  appointmentId  String?
   appointment    Appointment?     @relation(fields: [appointmentId], references: [id])
   doctorId       String
   doctor         Doctor           @relation(fields: [doctorId], references: [id])
@@ -161,6 +161,7 @@ model Attendance {
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
+  @@index([appointmentId])
   @@index([attendanceDate, doctorId])
   @@index([treatment])
   @@map("attendances")

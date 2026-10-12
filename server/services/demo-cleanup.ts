@@ -32,13 +32,16 @@ export async function cleanupDemoData(actorId: string, apply = false, database =
     const attendanceFilter: Prisma.AttendanceWhereInput = confirmedIds.length
       ? { OR: [...demo.OR, { id: { in: confirmedIds } }] } : demo;
     const appointments = await tx.appointment.findMany({
-      where: demo, select: { id: true, doctorId: true, appointmentDate: true, attendance: { select: { id: true, isDemo: true, dataSource: true } } },
+      where: demo, select: { id: true, doctorId: true, appointmentDate: true, attendances: { select: { id: true, isDemo: true, dataSource: true } } },
     });
     const attendances = await tx.attendance.findMany({
       where: attendanceFilter, select: { id: true, doctorId: true, attendanceDate: true },
     });
     // An unmarked attendance is not assumed fictitious, even if linked to a demo appointment.
-    const appointmentIds = appointments.filter((a) => !a.attendance || a.attendance.isDemo || a.attendance.dataSource === 'DEMO' || confirmedIds.includes(a.attendance.id)).map((a) => a.id);
+    const appointmentIds = appointments.filter((a) => {
+      if (!a.attendances.length) return true;
+      return a.attendances.every((att) => att.isDemo || att.dataSource === 'DEMO' || confirmedIds.includes(att.id));
+    }).map((a) => a.id);
     const attendanceIds = attendances.map((a) => a.id);
     const pairs = new Map<string, { doctorId: string; date: Date }>();
     for (const a of appointments) {

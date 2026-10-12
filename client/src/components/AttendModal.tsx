@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api } from '../lib/api';
 import { nowTime } from '../lib/utils';
 import { Badge } from './Badge';
+import { ProcedureLinesEditor, type ProcedureLine } from './ProcedureLines';
 import { huliAgendaStatus } from '@shared/huli';
 import { toTime24h } from '@shared/time';
 
@@ -28,30 +29,32 @@ export function AttendModal({
   onSaved: () => void;
 }) {
   const [actualTime, setActualTime] = useState(nowTime());
-  const [treatment, setTreatment] = useState('');
-  const [amount, setAmount] = useState('');
-  const [notes, setNotes] = useState(appointment.notes || '');
-  const [confirming, setConfirming] = useState(false);
+  const [lines, setLines] = useState<ProcedureLine[]>([]);
   const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<'attend' | 'noshow' | null>(null);
 
   const submit = async () => {
-    setSaving(true);
+    if (!lines.length) {
+      setError('Agrega al menos una atención.');
+      return;
+    }
+    setSaving('attend');
     setError('');
     try {
       await api.post('/api/attend', {
         appointmentId: appointment.id,
         actualTime,
-        treatment,
-        amount: Number(amount),
-        notes,
+        items: lines.map((line) => ({
+          treatment: line.treatment,
+          amount: Number(line.amount),
+          notes: line.notes || undefined,
+        })),
       });
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al guardar');
-      setConfirming(false);
     } finally {
-      setSaving(false);
+      setSaving(null);
     }
   };
 
@@ -62,20 +65,19 @@ export function AttendModal({
   );
 
   const markNoShow = async () => {
-    setSaving(true);
+    setSaving('noshow');
     setError('');
     try {
       await api.post('/api/classify', {
         appointmentId: appointment.id,
         operationalStatus: 'NO_SHOW',
         reason: 'NO_SE_PRESENTO',
-        notes: notes || undefined,
       });
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo marcar como no se presentó');
     } finally {
-      setSaving(false);
+      setSaving(null);
     }
   };
 
@@ -89,7 +91,7 @@ export function AttendModal({
       <div className="card flex h-full w-full max-w-xl flex-col overflow-hidden sm:h-auto sm:max-h-[90vh]">
         <div className="border-b border-slate-100 px-6 py-4">
           <h2 className="font-display text-2xl font-semibold">Registrar atención</h2>
-          <p className="text-slate-500">Captura procedimiento, notas y monto. El paciente pasará a Atendidos.</p>
+          <p className="text-slate-500">Puedes agregar varios procedimientos. Cada uno se guarda como un renglón en Atendidos.</p>
         </div>
         <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
           <div className="rounded-2xl bg-sand p-4">
@@ -106,70 +108,32 @@ export function AttendModal({
             </div>
           </div>
 
-          {!confirming ? (
-            <>
-              <div>
-                <label className="label">Hora real de atención *</label>
-                <input className="input" type="time" value={actualTime} onChange={(e) => setActualTime(e.target.value)} />
-              </div>
-              <div>
-                <label className="label">Procedimiento *</label>
-                <input className="input" value={treatment} onChange={(e) => setTreatment(e.target.value)} placeholder="Consulta, Botox, Láser…" autoFocus />
-              </div>
-              <div>
-                <label className="label">Monto a cobrar *</label>
-                <input className="input" type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
-              </div>
-              <div>
-                <label className="label">Notas</label>
-                <textarea className="input min-h-[90px]" value={notes} onChange={(e) => setNotes(e.target.value)} />
-              </div>
-            </>
-          ) : (
-            <div className="rounded-2xl border border-brand-200 bg-brand-50 p-4">
-              <div className="font-semibold">Confirmar atención</div>
-              <div className="mt-3 space-y-1 text-sm">
-                <div>Paciente: <strong>{appointment.patientName}</strong></div>
-                <div>Procedimiento: <strong>{treatment}</strong></div>
-                <div>Monto a cobrar: <strong>${amount}</strong></div>
-              </div>
-            </div>
-          )}
+          <div>
+            <label className="label">Hora real de atención *</label>
+            <input className="input" type="time" value={actualTime} onChange={(e) => setActualTime(e.target.value)} />
+          </div>
+
+          <ProcedureLinesEditor lines={lines} onChange={setLines} />
 
           {error && <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
         </div>
         <div className="flex flex-wrap gap-2 border-t border-slate-100 px-6 py-4">
-          <button className="btn-secondary min-w-[6.5rem] flex-1" onClick={onClose} disabled={saving}>Cancelar</button>
-          {!confirming && (
-            <button
-              type="button"
-              className="btn min-w-[7.5rem] flex-1 bg-slate-100 text-slate-800 hover:bg-slate-200"
-              onClick={() => void markNoShow()}
-              disabled={saving}
-            >
-              {saving ? 'Guardando…' : 'No se presentó'}
-            </button>
-          )}
-          {!confirming ? (
-            <button
-              className="btn-primary min-w-[8rem] flex-1"
-              disabled={saving}
-              onClick={() => {
-                if (!treatment.trim() || !amount || Number(amount) <= 0) {
-                  setError('Procedimiento y monto son obligatorios');
-                  return;
-                }
-                setError('');
-                setConfirming(true);
-              }}
-            >
-              Pasar a atendidos
-            </button>
-          ) : (
-            <button className="btn-primary flex-1" onClick={submit} disabled={saving}>
-              {saving ? 'Guardando…' : 'Confirmar'}
-            </button>
-          )}
+          <button className="btn-secondary min-w-[6.5rem] flex-1" onClick={onClose} disabled={Boolean(saving)}>Cancelar</button>
+          <button
+            type="button"
+            className="btn min-w-[7.5rem] flex-1 bg-slate-100 text-slate-800 hover:bg-slate-200"
+            onClick={() => void markNoShow()}
+            disabled={Boolean(saving)}
+          >
+            {saving === 'noshow' ? 'Guardando…' : 'No se presentó'}
+          </button>
+          <button
+            className="btn-primary min-w-[8rem] flex-1"
+            disabled={Boolean(saving) || lines.length === 0}
+            onClick={() => void submit()}
+          >
+            {saving === 'attend' ? 'Guardando…' : 'Pasar a atendidos'}
+          </button>
         </div>
       </div>
     </div>

@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   buildDayKpis,
   isOnAgenda,
+  matchDoctorId,
   namesMatch,
   normalizeMatchKey,
 } from '../../shared/match';
@@ -11,6 +12,16 @@ test('doctor names match ignoring title, accents and extra spaces', () => {
   assert.equal(normalizeMatchKey('Dra. Ana Patricia Solís'), 'ana patricia solis');
   assert.ok(namesMatch('Dra. Ana Patricia Solís', 'Ana Patricia Solis'));
   assert.ok(namesMatch('Berenice Gomez Tagle Boix', 'BERENICE  GOMEZ TAGLE BOIX'));
+});
+
+test('excel doctor names match the clinic doctor even without the last surname', () => {
+  const doctors = [
+    { id: 'b', name: 'Berenice Gomez Tagle Boix' },
+    { id: 'l', name: 'Luisa Fernanda Martínez Rosas Hijar' },
+  ];
+  assert.equal(matchDoctorId('Dra. Berenice Gomez Tagle', doctors), 'b');
+  assert.equal(matchDoctorId('Berenice Gomez Tagle Boix', doctors), 'b');
+  assert.equal(matchDoctorId('Dra. Desconocida', doctors), null);
 });
 
 test('attended appointment leaves the agenda even if status lagged', () => {
@@ -44,4 +55,9 @@ test('day KPIs count attendances for attended and keep cancelled off pending', (
   assert.equal(kpis.cancelledOrNoShow, 1);
   assert.equal(kpis.walkIns, 1);
   assert.equal(kpis.amount, 1850);
+});
+
+test('attended flag also reads attendances array', () => {
+  assert.equal(isOnAgenda({ operationalStatus: 'PENDING', attendances: [{ id: '1' }] }), false);
+  assert.equal(isOnAgenda({ operationalStatus: 'PENDING', attendances: [] }), true);
 });

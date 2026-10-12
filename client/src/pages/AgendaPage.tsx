@@ -6,7 +6,7 @@ import { AttendModal } from '../components/AttendModal';
 import { WalkInModal } from '../components/WalkInModal';
 import { CloseDayModal } from '../components/CloseDayModal';
 import { money } from '../components/KpiGrid';
-import { formatDisplayDate, todayISO } from '../lib/utils';
+import { formatDisplayDate, shiftDate, todayISO } from '../lib/utils';
 import { useAuth } from '../auth/AuthContext';
 import { canSeeAll, isReadOnlyRole, ORIGIN_LABELS } from '@shared/constants';
 import { isOnAgenda, isPendingOnAgenda } from '@shared/match';
@@ -54,8 +54,9 @@ export function AgendaPage() {
   const { user } = useAuth();
   const seesAll = canSeeAll(user?.role);
   const canEdit = !isReadOnlyRole(user?.role);
-  const date = todayISO();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const date = searchParams.get('date') || todayISO();
+  const isToday = date === todayISO();
   const [doctorId, setDoctorId] = useState(seesAll ? searchParams.get('doctorId') || '' : '');
   const [q, setQ] = useState('');
   const [doctors, setDoctors] = useState<Array<{ id: string; name: string }>>([]);
@@ -92,9 +93,16 @@ export function AgendaPage() {
     }
   };
 
+  const setDate = (next: string) => {
+    const params = new URLSearchParams(searchParams);
+    if (next === todayISO()) params.delete('date');
+    else params.set('date', next);
+    setSearchParams(params, { replace: true });
+  };
+
   useEffect(() => {
     load().catch(console.error);
-  }, [doctorId]);
+  }, [doctorId, date]);
 
   const matchesQuery = (value: string | null | undefined) => {
     if (!q.trim()) return true;
@@ -133,14 +141,27 @@ export function AgendaPage() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="font-display text-2xl font-semibold sm:text-3xl">Hoy</h1>
+          <h1 className="font-display text-2xl font-semibold sm:text-3xl">Agenda</h1>
           <p className="text-sm text-slate-600">
             {seesAll
               ? `Toda la operación · ${formatDisplayDate(date)}`
               : `${user?.name || 'Tu agenda'} · ${formatDisplayDate(date)}`}
+            {!isToday ? ' · no es hoy' : ''}
           </p>
         </div>
         <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center">
+          <div className="col-span-2 flex gap-2">
+            <button type="button" className="btn-secondary" onClick={() => setDate(shiftDate(date, -1))}>←</button>
+            <button type="button" className="btn-secondary" onClick={() => setDate(todayISO())}>HOY</button>
+            <button type="button" className="btn-secondary" onClick={() => setDate(shiftDate(date, 1))}>→</button>
+            <input
+              className="input flex-1 sm:w-40"
+              type="date"
+              aria-label="Fecha de agenda"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </div>
           {seesAll && (
             <select
               className="input col-span-2 w-full sm:w-auto sm:min-w-[200px]"
@@ -248,7 +269,13 @@ export function AgendaPage() {
               );
             })}
             {!loading && scheduled.length === 0 && (
-              <div className="px-4 py-10 text-center text-sm text-slate-500">No hay pacientes en este filtro.</div>
+              <div className="px-4 py-10 text-center text-sm text-slate-500">
+                {listFilter !== 'all' && agendaPool.length > 0
+                  ? listFilter === 'pending'
+                    ? 'No hay pendientes. Revisa Otros o Todos.'
+                    : 'Nada en Otros. Revisa Pendientes o Todos.'
+                  : `No hay citas el ${formatDisplayDate(date)}. Si importaste un Excel, usa las flechas o la fecha para ir al día de la columna Fecha.`}
+              </div>
             )}
           </div>
         </section>
@@ -256,7 +283,7 @@ export function AgendaPage() {
         <section className="flex max-h-[70vh] flex-col overflow-hidden rounded-2xl border-2 border-emerald-200 bg-white shadow-soft">
           <div className="flex items-center justify-between gap-3 border-b border-emerald-100 bg-emerald-50/70 px-3 py-3">
             <div>
-              <h2 className="font-semibold text-emerald-900">Atendidos hoy</h2>
+              <h2 className="font-semibold text-emerald-900">{isToday ? 'Atendidos hoy' : 'Atendidos de este día'}</h2>
               <p className="text-xs text-emerald-800/80">Procedimiento y monto del día</p>
             </div>
             <span className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-emerald-800">{attended.length}</span>

@@ -6,8 +6,8 @@ import XLSX from 'xlsx';
 import { prisma } from '../db';
 import { requireAuth, requireRole, getUser } from '../middleware/auth';
 import { EXPECTED_EXCEL_COLUMNS } from '../../shared/constants';
-import { huliRowValue, huliText, mapHuliEstado } from '../../shared/huli';
-import { normalizeMatchKey } from '../../shared/match';
+import { huliRowValue, huliText, mapHuliEstado, parseHuliDate } from '../../shared/huli';
+import { matchDoctorId, normalizeMatchKey } from '../../shared/match';
 import { toTime24h } from '../../shared/time';
 import { parseDateOnly, writeAudit, formatDateOnly } from '../utils';
 import type { OperationalStatus } from '@prisma/client';
@@ -57,30 +57,8 @@ function cell(row: Record<string, unknown>, key: string): string {
   return huliText(val);
 }
 
-function parseExcelDate(value: string): Date | null {
-  if (!value) return null;
-  // Excel serial number
-  if (/^\d+(\.\d+)?$/.test(value)) {
-    const serial = Number(value);
-    const excelEpoch = new Date(Date.UTC(1899, 11, 30));
-    const ms = Math.round(serial * 86400000);
-    const d = new Date(excelEpoch.getTime() + ms);
-    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-  }
-  // DD/MM/YYYY or YYYY-MM-DD
-  const dmY = value.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-  if (dmY) {
-    return new Date(Date.UTC(Number(dmY[3]), Number(dmY[2]) - 1, Number(dmY[1])));
-  }
-  const ymd = value.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
-  if (ymd) {
-    return new Date(Date.UTC(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3])));
-  }
-  const parsed = new Date(value);
-  if (!Number.isNaN(parsed.getTime())) {
-    return new Date(Date.UTC(parsed.getFullYear(), parsed.getMonth(), parsed.getDate()));
-  }
-  return null;
+function parseExcelDate(value: unknown): Date | null {
+  return parseHuliDate(value);
 }
 
 function parseTime(value: unknown): string {
@@ -131,7 +109,7 @@ async function parseWorkbook(filePath: string) {
     const externalAppointmentId = cell(row, 'ID cita');
     const patientName = cell(row, 'Nombre');
     const sourceDoctorName = cell(row, 'Doctor');
-    const fecha = cell(row, 'Fecha');
+    const fecha = huliRowValue(row, 'Fecha');
 
     if (!externalAppointmentId && !patientName) return;
 
@@ -142,12 +120,12 @@ async function parseWorkbook(filePath: string) {
 
     const appointmentDate = parseExcelDate(fecha);
     if (!appointmentDate) {
-      errors.push({ row: rowNumber, message: `Fecha inválida: ${fecha}` });
+      errors.push({ row: rowNumber, message: `Fecha inválida: ${huliText(fecha) || String(fecha ?? '')}` });
     }
 
     if (sourceDoctorName) doctorsDetected.add(sourceDoctorName);
     const doctorId = sourceDoctorName
-      ? mapByName.get(normalizeMatchKey(sourceDoctorName)) ?? null
+      ? matchDoctorId(sourceDoctorName, doctors, mapByName)
       : null;
     if (sourceDoctorName && !doctorId) unmappedDoctors.add(sourceDoctorName);
 
@@ -161,7 +139,7 @@ async function parseWorkbook(filePath: string) {
       patientName,
       phone: cell(row, 'Teléfono'),
       insurance: cell(row, 'Seguro'),
-      birthDate: parseExcelDate(cell(row, 'Fecha de Nacimiento')),
+      birthDate: parseExcelDate(huliRowValue(row, 'Fecha de Nacimiento')),
       email: cell(row, 'Correo'),
       sourceStatus: cell(row, 'Estado'),
       attendanceConfirmation: cell(row, 'Asistencia'),
@@ -184,6 +162,12 @@ async function parseWorkbook(filePath: string) {
   let existingCount = 0;
   let updatedCount = 0;
   let cancelledCount = 0;
+  const dateCounts: Record<string, number> = {};
+  for (const row of parsed) {
+    if (!row.appointmentDate) continue;
+    const key = formatDateOnly(row.appointmentDate);
+    dateCounts[key] = (dateCounts[key] || 0) + 1;
+  }
 
   for (const row of parsed) {
     if (row.error) continue;
@@ -223,6 +207,7 @@ async function parseWorkbook(filePath: string) {
     errorCount: errors.length + parsed.filter((p) => p.error).length,
     doctorsDetected: Array.from(doctorsDetected),
     unmappedDoctors: Array.from(unmappedDoctors),
+    dateCounts,
     errors: [
       ...errors,
       ...parsed.filter((p) => p.error).map((p) => ({ row: p.rowNumber, message: p.error! })),
@@ -280,6 +265,7 @@ router.post('/preview', requireAuth, requireRole('ADMIN'), upload.single('file')
         errorCount: summary.errorCount,
         doctorsDetected: summary.doctorsDetected,
         unmappedDoctors: summary.unmappedDoctors,
+        dateCounts: summary.dateCounts,
         errors: summary.errors,
         missingColumns: summary.missingColumns,
       },
