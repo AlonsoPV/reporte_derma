@@ -5,10 +5,17 @@ import { Badge } from '../components/Badge';
 import { AttendModal } from '../components/AttendModal';
 import { WalkInModal } from '../components/WalkInModal';
 import { CloseDayModal } from '../components/CloseDayModal';
+import {
+  AttendanceDeleteModal,
+  AttendanceEditModal,
+  AttendanceRowActions,
+  attendanceDayClosed,
+  type EditableAttendance,
+} from '../components/AttendanceActions';
 import { money } from '../components/KpiGrid';
 import { formatDisplayDate, shiftDate, todayISO } from '../lib/utils';
 import { useAuth } from '../auth/AuthContext';
-import { canSeeAll, isReadOnlyRole, ORIGIN_LABELS } from '@shared/constants';
+import { canMutateAttendance, canSeeAll, isReadOnlyRole, ORIGIN_LABELS } from '@shared/constants';
 import { isOnAgenda, isPendingOnAgenda } from '@shared/match';
 import { huliAgendaStatus } from '@shared/huli';
 import { compareTimes, toTime24h } from '@shared/time';
@@ -35,10 +42,13 @@ type Attendance = {
   id: string;
   actualTime: string;
   patientName: string;
+  phone?: string | null;
+  email?: string | null;
   treatment: string;
   amount: number | string;
   origin: keyof typeof ORIGIN_LABELS;
   notes?: string | null;
+  doctorId?: string | null;
   doctor?: { name: string };
 };
 
@@ -67,6 +77,8 @@ export function AgendaPage() {
   const [walkInOpen, setWalkInOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
   const [listFilter, setListFilter] = useState<'pending' | 'other' | 'all'>('pending');
+  const [editingAttendance, setEditingAttendance] = useState<EditableAttendance | null>(null);
+  const [deletingAttendance, setDeletingAttendance] = useState<EditableAttendance | null>(null);
 
   const closeDoctorId = seesAll ? doctorId : user?.doctorId || '';
   const canClose = canEdit && Boolean(closeDoctorId);
@@ -289,18 +301,28 @@ export function AgendaPage() {
             <span className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-emerald-800">{attended.length}</span>
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
-            {attended.map((a) => (
-              <div key={a.id} className="flex items-center gap-3 border-t border-slate-100 px-3 py-2.5">
-                <span className="w-14 shrink-0 text-sm font-semibold tabular-nums">{toTime24h(a.actualTime)}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">{a.patientName}</span>
-                  <span className="block truncate text-xs text-slate-500">
-                    {[a.treatment, seesAll ? a.doctor?.name : null, ORIGIN_LABELS[a.origin], a.notes].filter(Boolean).join(' · ')}
+            {attended.map((a) => {
+              const closed = attendanceDayClosed(a, data);
+              const canMutate = canMutateAttendance(user?.role, closed);
+              return (
+                <div key={a.id} className="flex items-center gap-3 border-t border-slate-100 px-3 py-2.5">
+                  <span className="w-14 shrink-0 text-sm font-semibold tabular-nums">{toTime24h(a.actualTime)}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{a.patientName}</span>
+                    <span className="block truncate text-xs text-slate-500">
+                      {[a.treatment, seesAll ? a.doctor?.name : null, ORIGIN_LABELS[a.origin], a.notes].filter(Boolean).join(' · ')}
+                    </span>
                   </span>
-                </span>
-                <span className="shrink-0 text-sm font-semibold text-emerald-800">{money(Number(a.amount))}</span>
-              </div>
-            ))}
+                  <span className="shrink-0 text-sm font-semibold text-emerald-800">{money(Number(a.amount))}</span>
+                  <AttendanceRowActions
+                    canMutate={canMutate}
+                    closed={closed}
+                    onEdit={() => setEditingAttendance(a)}
+                    onDelete={() => setDeletingAttendance(a)}
+                  />
+                </div>
+              );
+            })}
             {!loading && attended.length === 0 && (
               <div className="px-4 py-10 text-center text-sm text-emerald-800/70">Aún no hay pacientes atendidos.</div>
             )}
@@ -336,6 +358,26 @@ export function AgendaPage() {
           onClose={() => setCloseOpen(false)}
           onClosed={async () => {
             setCloseOpen(false);
+            await load();
+          }}
+        />
+      )}
+      {editingAttendance && (
+        <AttendanceEditModal
+          attendance={editingAttendance}
+          onClose={() => setEditingAttendance(null)}
+          onSaved={async () => {
+            setEditingAttendance(null);
+            await load();
+          }}
+        />
+      )}
+      {deletingAttendance && (
+        <AttendanceDeleteModal
+          attendance={deletingAttendance}
+          onClose={() => setDeletingAttendance(null)}
+          onDeleted={async () => {
+            setDeletingAttendance(null);
             await load();
           }}
         />

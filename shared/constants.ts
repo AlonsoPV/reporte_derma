@@ -25,6 +25,16 @@ export function isReadOnlyRole(role?: string | null) {
   return role === 'RECEPTION';
 }
 
+export function canBypassClosedDay(role?: string | null) {
+  return role === 'ADMIN';
+}
+
+export function canMutateAttendance(role?: string | null, isDayClosed?: boolean) {
+  if (!role || isReadOnlyRole(role)) return false;
+  if (isDayClosed) return canBypassClosedDay(role);
+  return true;
+}
+
 export function homePathForRole(role?: string | null) {
   return canSeeAll(role) ? '/admin' : '/hoy';
 }

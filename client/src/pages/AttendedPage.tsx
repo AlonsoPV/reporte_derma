@@ -5,7 +5,8 @@ import { money } from '../components/KpiGrid';
 import { DateQuickFilters } from '../components/DateQuickFilters';
 import { resolveDatePreset } from '../lib/utils';
 import { toTime24h } from '@shared/time';
-import { canSeeAll, isReadOnlyRole, ORIGIN_LABELS, PROCEDURES } from '@shared/constants';
+import { canMutateAttendance, canSeeAll, isReadOnlyRole, ORIGIN_LABELS, PROCEDURES } from '@shared/constants';
+import { AttendanceDeleteModal } from '../components/AttendanceActions';
 
 type Attendance = {
   id: string;
@@ -49,6 +50,7 @@ export function AttendedPage() {
   const [error, setError] = useState('');
   const [reopenId, setReopenId] = useState<string | null>(null);
   const [reopenReason, setReopenReason] = useState('');
+  const [deleting, setDeleting] = useState<Attendance | null>(null);
   const canReopen = user?.role === 'ADMIN';
 
   useEffect(() => {
@@ -90,7 +92,7 @@ export function AttendedPage() {
 
   const openDetail = (r: Attendance, startEditing = false) => {
     setSelected(r);
-    setEditing(canEdit && startEditing && !r.isDayClosed);
+    setEditing(canMutateAttendance(user?.role, r.isDayClosed) && startEditing);
     setError('');
     setForm({
       patientName: r.patientName,
@@ -105,7 +107,7 @@ export function AttendedPage() {
 
   const save = async () => {
     if (!selected) return;
-    if (selected.isDayClosed) {
+    if (selected.isDayClosed && !canMutateAttendance(user?.role, true)) {
       setError('El día está cerrado. No se puede editar.');
       setEditing(false);
       return;
@@ -197,14 +199,16 @@ export function AttendedPage() {
                 <span className="shrink-0 text-sm font-semibold">{money(Number(r.amount))}</span>
                 <span className="flex shrink-0 gap-1">
                   <button className="btn-ghost px-2 py-1.5" onClick={() => openDetail(r, false)}>Ver</button>
-                  {r.isDayClosed ? (
-                    canReopen && r.closureId ? (
-                      <button className="btn-secondary px-2 py-1.5" onClick={() => { setReopenId(r.closureId!); setReopenReason(''); setError(''); }}>Reabrir</button>
-                    ) : (
-                      <span className="self-center text-xs font-semibold text-brand-700">Cerrado</span>
-                    )
-                  ) : canEdit ? (
-                    <button className="btn-secondary px-2 py-1.5" onClick={() => openDetail(r, true)}>Editar</button>
+                  {canMutateAttendance(user?.role, r.isDayClosed) ? (
+                    <>
+                      <button className="btn-secondary px-2 py-1.5" onClick={() => openDetail(r, true)}>Editar</button>
+                      <button className="btn-ghost px-2 py-1.5 text-rose-700" onClick={() => setDeleting(r)}>Borrar</button>
+                    </>
+                  ) : r.isDayClosed ? (
+                    <span className="self-center text-xs font-semibold text-brand-700">Cerrado</span>
+                  ) : null}
+                  {r.isDayClosed && canReopen && r.closureId ? (
+                    <button className="btn-secondary px-2 py-1.5" onClick={() => { setReopenId(r.closureId!); setReopenReason(''); setError(''); }}>Reabrir</button>
                   ) : null}
                 </span>
               </div>
@@ -232,12 +236,12 @@ export function AttendedPage() {
               <h2 className="font-display text-2xl font-semibold">
                 {editing ? 'Editar atención' : selected.patientName}
               </h2>
-              {canEdit && !editing && !selected.isDayClosed && (
+              {canMutateAttendance(user?.role, selected.isDayClosed) && !editing && (
                 <button className="btn-primary" onClick={() => setEditing(true)}>Editar</button>
               )}
             </div>
 
-            {selected.isDayClosed && (
+            {selected.isDayClosed && !canMutateAttendance(user?.role, true) && (
               <div className="mt-3 space-y-2 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-900">
                 <p>Día cerrado. Hay que reabrirlo para corregir esta atención.</p>
                 {canReopen && selected.closureId ? (
@@ -326,6 +330,9 @@ export function AttendedPage() {
                   {saving ? 'Guardando…' : 'Guardar cambios'}
                 </button>
               )}
+              {canMutateAttendance(user?.role, selected.isDayClosed) && !editing && (
+                <button className="btn-danger flex-1" onClick={() => setDeleting(selected)}>Borrar</button>
+              )}
             </div>
           </div>
         </div>
@@ -380,6 +387,19 @@ export function AttendedPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {deleting && (
+        <AttendanceDeleteModal
+          attendance={deleting}
+          onClose={() => setDeleting(null)}
+          onDeleted={async () => {
+            setDeleting(null);
+            setSelected(null);
+            setEditing(false);
+            await load();
+          }}
+        />
       )}
     </div>
   );

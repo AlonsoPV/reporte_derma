@@ -13,7 +13,7 @@ import {
   writeAudit,
 } from '../utils';
 import { attendSchema, walkInSchema, classifyAppointmentSchema } from '../../shared/schemas';
-import { canSeeAll } from '../../shared/constants';
+import { canBypassClosedDay, canSeeAll } from '../../shared/constants';
 import { buildDayKpis } from '../../shared/match';
 import type { OperationalStatus } from '@prisma/client';
 
@@ -440,7 +440,9 @@ router.patch('/attendances/:id', requireAuth, async (req, res) => {
     if (!existing) return res.status(404).json({ error: 'Atención no encontrada' });
     assertDoctorAccess(user, existing.doctorId);
 
-    await assertDayOpen(existing.doctorId, existing.attendanceDate);
+    if (!canBypassClosedDay(user.role)) {
+      await assertDayOpen(existing.doctorId, existing.attendanceDate);
+    }
 
     const { treatment, amount, notes, patientName, phone, email, actualTime } = req.body;
 
@@ -496,6 +498,57 @@ router.patch('/attendances/:id', requireAuth, async (req, res) => {
     const err = e as Error & { status?: number };
     console.error(e);
     res.status(err.status ?? 500).json({ error: err.message || 'Error al actualizar atención' });
+  }
+});
+
+router.delete('/attendances/:id', requireAuth, async (req, res) => {
+  try {
+    const user = getUser(req);
+    const existing = await prisma.attendance.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: 'Atención no encontrada' });
+    assertDoctorAccess(user, existing.doctorId);
+
+    if (!canBypassClosedDay(user.role)) {
+      await assertDayOpen(existing.doctorId, existing.attendanceDate);
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.attendance.delete({ where: { id: existing.id } });
+      let restoredAppointment = false;
+      if (existing.appointmentId) {
+        const remaining = await tx.attendance.count({ where: { appointmentId: existing.appointmentId } });
+        if (remaining === 0) {
+          await tx.appointment.update({
+            where: { id: existing.appointmentId },
+            data: { operationalStatus: 'PENDING', noShowReason: null, noShowNotes: null },
+          });
+          restoredAppointment = true;
+        }
+      }
+      return { restoredAppointment };
+    });
+
+    await writeAudit({
+      userId: user.id,
+      action: 'DELETE_ATTENDANCE',
+      entityType: 'attendance',
+      entityId: existing.id,
+      previousValue: {
+        patientName: existing.patientName,
+        treatment: existing.treatment,
+        amount: existing.amount,
+        notes: existing.notes,
+        appointmentId: existing.appointmentId,
+        doctorId: existing.doctorId,
+      },
+      newValue: result,
+    });
+
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    const err = e as Error & { status?: number };
+    console.error(e);
+    res.status(err.status ?? 500).json({ error: err.message || 'Error al borrar atención' });
   }
 });
 
