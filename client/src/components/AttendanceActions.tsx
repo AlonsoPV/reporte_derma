@@ -78,23 +78,36 @@ export function AttendanceEditModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const parsedAmount = Number(String(form.amount).replace(/,/g, '').trim());
+
   const save = async () => {
-    if (!form.patientName.trim() || !form.treatment.trim() || Number(form.amount) <= 0) {
+    if (!form.patientName.trim() || !form.treatment.trim() || !(parsedAmount > 0)) {
       setError('Nombre, procedimiento y monto son obligatorios');
+      return;
+    }
+    if (!form.actualTime) {
+      setError('La hora de atención es obligatoria');
       return;
     }
     setSaving(true);
     setError('');
     try {
-      await api.patch(`/api/attendances/${attendance.id}`, {
-        patientName: form.patientName,
+      const body = {
+        patientName: form.patientName.trim(),
         phone: form.phone,
         email: form.email,
-        actualTime: form.actualTime,
-        treatment: form.treatment,
-        amount: Number(form.amount),
+        actualTime: toTime24h(form.actualTime) || form.actualTime,
+        treatment: form.treatment.trim(),
+        amount: parsedAmount,
         notes: form.notes,
-      });
+      };
+      try {
+        await api.put(`/api/attendances/${attendance.id}`, body);
+      } catch (first) {
+        const status = first instanceof Error && 'status' in first ? Number((first as Error & { status?: number }).status) : 0;
+        if (status !== 404 && status !== 405) throw first;
+        await api.patch(`/api/attendances/${attendance.id}`, body);
+      }
       await onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al guardar');
@@ -110,9 +123,9 @@ export function AttendanceEditModal({
         if (e.target === e.currentTarget && !saving) onClose();
       }}
     >
-      <div className="card max-h-[90vh] w-full max-w-lg overflow-y-auto p-6">
-        <h2 className="font-display text-2xl font-semibold">Editar atención</h2>
-        <div className="mt-4 space-y-3">
+      <div className="card flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden p-0">
+        <h2 className="font-display px-6 pt-6 text-2xl font-semibold">Editar atención</h2>
+        <div className="mt-4 min-h-0 flex-1 space-y-3 overflow-y-auto px-6">
           <div>
             <label className="label">Paciente *</label>
             <input className="input" value={form.patientName} onChange={(e) => setForm({ ...form, patientName: e.target.value })} />
@@ -152,9 +165,9 @@ export function AttendanceEditModal({
           </div>
           {error && <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
         </div>
-        <div className="mt-6 flex gap-2">
-          <button className="btn-secondary flex-1" disabled={saving} onClick={onClose}>Cancelar</button>
-          <button className="btn-primary flex-1" disabled={saving} onClick={() => void save()}>
+        <div className="mt-4 flex gap-2 border-t border-slate-100 px-6 py-4">
+          <button type="button" className="btn-secondary flex-1" disabled={saving} onClick={onClose}>Cancelar</button>
+          <button type="button" className="btn-primary flex-1" disabled={saving} onClick={() => void save()}>
             {saving ? 'Guardando…' : 'Guardar cambios'}
           </button>
         </div>

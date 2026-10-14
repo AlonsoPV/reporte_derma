@@ -3,6 +3,19 @@ import type { SessionUser } from '../shared/types';
 import type { Prisma } from '@prisma/client';
 import { canSeeAll } from '../shared/constants';
 
+function jsonSafe(value: unknown): Prisma.InputJsonValue | undefined {
+  if (value === undefined) return undefined;
+  return JSON.parse(
+    JSON.stringify(value, (_key, nested) => {
+      if (nested != null && typeof nested === 'object' && typeof (nested as { toNumber?: unknown }).toNumber === 'function') {
+        return (nested as { toNumber: () => number }).toNumber();
+      }
+      if (typeof nested === 'bigint') return nested.toString();
+      return nested;
+    }),
+  ) as Prisma.InputJsonValue;
+}
+
 export async function writeAudit(params: {
   userId?: string | null;
   action: string;
@@ -17,16 +30,21 @@ export async function writeAudit(params: {
       action: params.action,
       entityType: params.entityType,
       entityId: params.entityId ?? null,
-      previousValue: (params.previousValue ?? undefined) as Prisma.InputJsonValue | undefined,
-      newValue: (params.newValue ?? undefined) as Prisma.InputJsonValue | undefined,
+      previousValue: jsonSafe(params.previousValue),
+      newValue: jsonSafe(params.newValue),
     },
   });
 }
 
 export function toNumber(value: unknown): number {
   if (value == null) return 0;
-  if (typeof value === 'number') return value;
-  return Number(value);
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (typeof value === 'object' && typeof (value as { toNumber?: unknown }).toNumber === 'function') {
+    const n = (value as { toNumber: () => number }).toNumber();
+    return Number.isFinite(n) ? n : 0;
+  }
+  const n = Number(String(value).replace(/,/g, '').trim());
+  return Number.isFinite(n) ? n : 0;
 }
 
 export function parseDateOnly(value: string): Date {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildDayKpis,
+  isNoShowOnAgenda,
   isOnAgenda,
   matchDoctorId,
   namesMatch,
@@ -60,4 +61,19 @@ test('day KPIs count attendances for attended and keep cancelled off pending', (
 test('attended flag also reads attendances array', () => {
   assert.equal(isOnAgenda({ operationalStatus: 'PENDING', attendances: [{ id: '1' }] }), false);
   assert.equal(isOnAgenda({ operationalStatus: 'PENDING', attendances: [] }), true);
+});
+
+test('no-shows are detected from clinic status or Huli export, not from cancelled/rescheduled', () => {
+  assert.equal(isNoShowOnAgenda({ operationalStatus: 'NO_SHOW' }), true);
+  assert.equal(isNoShowOnAgenda({
+    operationalStatus: 'PENDING',
+    sourceStatus: 'Paciente no se presentó',
+  }), true);
+  assert.equal(isNoShowOnAgenda({ operationalStatus: 'PENDING' }), false);
+  assert.equal(isNoShowOnAgenda({ operationalStatus: 'CANCELLED' }), false);
+  assert.equal(isNoShowOnAgenda({ operationalStatus: 'RESCHEDULED' }), false);
+  assert.equal(isNoShowOnAgenda({
+    operationalStatus: 'NO_SHOW',
+    attendance: { id: 'a1' },
+  }), false);
 });

@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { prisma } from '../db';
 import { requireAuth, getUser } from '../middleware/auth';
 import {
@@ -15,6 +15,7 @@ import {
 import { attendSchema, walkInSchema, classifyAppointmentSchema } from '../../shared/schemas';
 import { canBypassClosedDay, canSeeAll } from '../../shared/constants';
 import { buildDayKpis } from '../../shared/match';
+import { toTime24h } from '../../shared/time';
 import type { OperationalStatus } from '@prisma/client';
 
 const router = Router();
@@ -433,7 +434,7 @@ router.get('/attendances', requireAuth, async (req, res) => {
   }
 });
 
-router.patch('/attendances/:id', requireAuth, async (req, res) => {
+async function updateAttendanceHandler(req: Request, res: Response) {
   try {
     const user = getUser(req);
     const existing = await prisma.attendance.findUnique({ where: { id: req.params.id } });
@@ -444,62 +445,78 @@ router.patch('/attendances/:id', requireAuth, async (req, res) => {
       await assertDayOpen(existing.doctorId, existing.attendanceDate);
     }
 
-    const { treatment, amount, notes, patientName, phone, email, actualTime } = req.body;
+    const { treatment, amount, notes, patientName, phone, email, actualTime } = req.body ?? {};
 
-    if (amount != null && Number(amount) <= 0) {
+    if (amount != null && amount !== '' && toNumber(amount) <= 0) {
       return res.status(400).json({ error: 'El monto debe ser mayor a 0' });
     }
     if (treatment != null && !String(treatment).trim()) {
       return res.status(400).json({ error: 'Tratamiento obligatorio' });
     }
 
+    const nextTime = actualTime != null && String(actualTime).trim()
+      ? (toTime24h(String(actualTime)) || existing.actualTime)
+      : existing.actualTime;
+
     const updated = await prisma.attendance.update({
       where: { id: existing.id },
       data: {
         treatment: treatment != null ? String(treatment).trim() : existing.treatment,
-        amount: amount != null ? Number(amount) : existing.amount,
+        amount: amount != null && amount !== '' ? toNumber(amount) : existing.amount,
         paymentMethod: existing.paymentMethod,
-        notes: notes !== undefined ? notes : existing.notes,
+        notes: notes !== undefined ? notes || null : existing.notes,
         patientName: patientName != null ? String(patientName).trim() : existing.patientName,
         phone: phone !== undefined ? phone || null : existing.phone,
         email: email !== undefined ? email || null : existing.email,
-        actualTime: actualTime ?? existing.actualTime,
+        actualTime: nextTime,
       },
       include: { doctor: true },
     });
 
-    await writeAudit({
-      userId: user.id,
-      action: 'UPDATE_ATTENDANCE',
-      entityType: 'attendance',
-      entityId: existing.id,
-      previousValue: {
-        patientName: existing.patientName,
-        treatment: existing.treatment,
-        amount: existing.amount,
-        paymentMethod: existing.paymentMethod,
-        notes: existing.notes,
-        phone: existing.phone,
-        actualTime: existing.actualTime,
-      },
-      newValue: {
-        patientName: updated.patientName,
-        treatment: updated.treatment,
-        amount: updated.amount,
-        paymentMethod: updated.paymentMethod,
-        notes: updated.notes,
-        phone: updated.phone,
-        actualTime: updated.actualTime,
+    try {
+      await writeAudit({
+        userId: user.id,
+        action: 'UPDATE_ATTENDANCE',
+        entityType: 'attendance',
+        entityId: existing.id,
+        previousValue: {
+          patientName: existing.patientName,
+          treatment: existing.treatment,
+          amount: toNumber(existing.amount),
+          paymentMethod: existing.paymentMethod,
+          notes: existing.notes,
+          phone: existing.phone,
+          actualTime: existing.actualTime,
+        },
+        newValue: {
+          patientName: updated.patientName,
+          treatment: updated.treatment,
+          amount: toNumber(updated.amount),
+          paymentMethod: updated.paymentMethod,
+          notes: updated.notes,
+          phone: updated.phone,
+          actualTime: updated.actualTime,
+        },
+      });
+    } catch (auditErr) {
+      console.error('audit UPDATE_ATTENDANCE', auditErr);
+    }
+
+    res.json({
+      attendance: {
+        ...updated,
+        amount: toNumber(updated.amount),
       },
     });
-
-    res.json({ attendance: updated });
   } catch (e) {
     const err = e as Error & { status?: number };
     console.error(e);
-    res.status(err.status ?? 500).json({ error: err.message || 'Error al actualizar atención' });
+    res.status(err.status ?? 500).json({ error: publicError(e, 'Error al actualizar atención') });
   }
-});
+}
+
+router.patch('/attendances/:id', requireAuth, updateAttendanceHandler);
+router.put('/attendances/:id', requireAuth, updateAttendanceHandler);
 
 router.delete('/attendances/:id', requireAuth, async (req, res) => {
   try {

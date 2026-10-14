@@ -24,6 +24,36 @@ test('multiple attendances require listed procedures', () => {
   });
   assert.equal(unknown.success, false);
 
-  assert.ok(PROCEDURES.includes('Aparatología Estética'));
-  assert.ok(PROCEDURES.includes('Botox y Rellenos'));
+  const required = [
+    '5FU',
+    'Nitrógeno',
+    'Kenalog',
+    'Curetaje',
+    'Rasurado',
+    'Procedimiento Estético',
+    'Toxina Botulínica',
+    'Restylane',
+    'Sculptra',
+    'Radiesse',
+    'Depilación',
+  ];
+  for (const name of required) {
+    assert.ok((PROCEDURES as readonly string[]).includes(name), `falta ${name}`);
+  }
+  assert.ok(!(PROCEDURES as readonly string[]).includes('Botox y Rellenos'));
+  assert.deepEqual([...PROCEDURES], [...PROCEDURES].sort((a, b) => a.localeCompare(b, 'es')));
+
+  const botox = attendSchema.safeParse({
+    appointmentId: 'a1',
+    actualTime: '14:22',
+    items: [{ treatment: 'Botox y Rellenos', amount: 100 }],
+  });
+  assert.equal(botox.success, false);
+
+  const kenalog = attendSchema.safeParse({
+    appointmentId: 'a1',
+    actualTime: '14:22',
+    items: [{ treatment: 'Kenalog', amount: 800 }],
+  });
+  assert.equal(kenalog.success, true);
 });

@@ -98,7 +98,7 @@ export function AttendedPage() {
       patientName: r.patientName,
       phone: r.phone || '',
       email: r.email || '',
-      actualTime: r.actualTime,
+      actualTime: toTime24h(r.actualTime),
       treatment: r.treatment,
       amount: String(r.amount),
       notes: r.notes || '',
@@ -112,22 +112,30 @@ export function AttendedPage() {
       setEditing(false);
       return;
     }
-    if (!form.patientName.trim() || !form.treatment.trim() || Number(form.amount) <= 0) {
+    const parsedAmount = Number(String(form.amount).replace(/,/g, '').trim());
+    if (!form.patientName.trim() || !form.treatment.trim() || !(parsedAmount > 0)) {
       setError('Nombre, tratamiento y monto son obligatorios');
       return;
     }
     setSaving(true);
     setError('');
     try {
-      await api.patch(`/api/attendances/${selected.id}`, {
-        patientName: form.patientName,
+      const body = {
+        patientName: form.patientName.trim(),
         phone: form.phone,
         email: form.email,
-        actualTime: form.actualTime,
-        treatment: form.treatment,
-        amount: Number(form.amount),
+        actualTime: toTime24h(form.actualTime) || form.actualTime,
+        treatment: form.treatment.trim(),
+        amount: parsedAmount,
         notes: form.notes,
-      });
+      };
+      try {
+        await api.put(`/api/attendances/${selected.id}`, body);
+      } catch (first) {
+        const status = first instanceof Error && 'status' in first ? Number((first as Error & { status?: number }).status) : 0;
+        if (status !== 404 && status !== 405) throw first;
+        await api.patch(`/api/attendances/${selected.id}`, body);
+      }
       setSelected(null);
       setEditing(false);
       await load();

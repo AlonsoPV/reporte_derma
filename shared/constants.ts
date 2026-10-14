@@ -55,13 +55,23 @@ export const ATTENDANCE_ORIGINS = ['SCHEDULED', 'WALK_IN'] as const;
 export type AttendanceOrigin = (typeof ATTENDANCE_ORIGINS)[number];
 
 export const PROCEDURES = [
+  '5FU',
   'Aparatología Estética',
   'Cirugía',
   'Consulta',
+  'Curetaje',
+  'Depilación',
+  'Kenalog',
+  'Nitrógeno',
   'Procedimiento Capilar',
-  'Botox y Rellenos',
+  'Procedimiento Estético',
   'Procedimiento Médico',
+  'Radiesse',
+  'Rasurado',
+  'Restylane',
   'Revisión',
+  'Sculptra',
+  'Toxina Botulínica',
 ] as const;
 export type Procedure = (typeof PROCEDURES)[number];
 

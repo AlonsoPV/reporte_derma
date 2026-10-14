@@ -5,12 +5,13 @@ import { Badge } from '../components/Badge';
 import { KpiGrid, money } from '../components/KpiGrid';
 import { formatDisplayDate, todayISO } from '../lib/utils';
 import { canMutateAttendance, canSeeAll, isReadOnlyRole } from '@shared/constants';
-import { isOnAgenda, isPendingOnAgenda } from '@shared/match';
+import { isNoShowOnAgenda, isOnAgenda, isPendingOnAgenda } from '@shared/match';
 import { huliAgendaStatus } from '@shared/huli';
 import { compareTimes, toTime24h } from '@shared/time';
 import { AttendModal } from '../components/AttendModal';
 import { WalkInModal } from '../components/WalkInModal';
 import { CloseDayModal } from '../components/CloseDayModal';
+import { NoShowSection } from '../components/NoShowSection';
 import {
   AttendanceDeleteModal,
   AttendanceEditModal,
@@ -97,12 +98,15 @@ export function TodayPage() {
     load().catch(console.error);
   }, []);
 
-  const agenda = useMemo(
-    () => (data?.appointments || [])
+  const { agenda, noShows } = useMemo(() => {
+    const onAgenda = (data?.appointments || [])
       .filter(isOnAgenda)
-      .sort((a, b) => compareTimes(a.startTime, b.startTime) || a.patientName.localeCompare(b.patientName, 'es')),
-    [data]
-  );
+      .sort((a, b) => compareTimes(a.startTime, b.startTime) || a.patientName.localeCompare(b.patientName, 'es'));
+    return {
+      agenda: onAgenda.filter((a) => !isNoShowOnAgenda(a)),
+      noShows: onAgenda.filter(isNoShowOnAgenda),
+    };
+  }, [data]);
   const pendingCount = agenda.filter(isPendingOnAgenda).length;
   const scheduled = useMemo(() => {
     return agenda.filter((a) => {
@@ -216,7 +220,7 @@ export function TodayPage() {
               <div className="px-4 py-10 text-center text-sm text-slate-500">
                 {listFilter !== 'all' && agenda.length > 0
                   ? listFilter === 'pending'
-                    ? 'No hay pendientes. Revisa Otros o Todos para ver reagendadas, canceladas o no presentados.'
+                    ? 'No hay pendientes. Revisa Otros o Todos para ver reagendadas o canceladas.'
                     : 'Nada en Otros. Revisa Pendientes o Todos.'
                   : 'No hay pacientes en tu agenda de hoy.'}
               </div>
@@ -258,6 +262,14 @@ export function TodayPage() {
           </div>
         </section>
       </div>
+
+      <NoShowSection
+        items={noShows}
+        detail={(appt) => [appt.phone, appt.notes].filter(Boolean).join(' · ')}
+        canAttend={() => Boolean(canEdit && !data?.isClosed)}
+        isLocked={() => Boolean(data?.isClosed)}
+        onSelect={setSelected}
+      />
 
       {canEdit && selected && (
         <AttendModal

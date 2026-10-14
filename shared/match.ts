@@ -1,4 +1,5 @@
 import type { OperationalStatus } from './constants';
+import { huliAgendaStatus } from './huli';
 
 const CLASSIFIED: OperationalStatus[] = ['NO_SHOW', 'CANCELLED', 'RESCHEDULED'];
 
@@ -80,6 +81,23 @@ export function isClassifiedOnAgenda(appointment: {
   isAttended?: boolean;
 }) {
   return CLASSIFIED.includes(effectiveStatus(appointment));
+}
+
+export function isNoShowOnAgenda(appointment: {
+  operationalStatus: string;
+  sourceStatus?: string | null;
+  attendanceConfirmation?: string | null;
+  attendance?: unknown | null;
+  attendances?: unknown[] | null;
+  isAttended?: boolean;
+}) {
+  if (!isOnAgenda(appointment)) return false;
+  if (effectiveStatus(appointment) === 'NO_SHOW') return true;
+  return huliAgendaStatus(
+    appointment.sourceStatus,
+    appointment.attendanceConfirmation,
+    appointment.operationalStatus,
+  )?.status === 'NO_SHOW';
 }
 
 export function buildDayKpis<

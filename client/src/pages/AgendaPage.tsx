@@ -5,6 +5,7 @@ import { Badge } from '../components/Badge';
 import { AttendModal } from '../components/AttendModal';
 import { WalkInModal } from '../components/WalkInModal';
 import { CloseDayModal } from '../components/CloseDayModal';
+import { NoShowSection } from '../components/NoShowSection';
 import {
   AttendanceDeleteModal,
   AttendanceEditModal,
@@ -16,7 +17,7 @@ import { money } from '../components/KpiGrid';
 import { formatDisplayDate, shiftDate, todayISO } from '../lib/utils';
 import { useAuth } from '../auth/AuthContext';
 import { canMutateAttendance, canSeeAll, isReadOnlyRole, ORIGIN_LABELS } from '@shared/constants';
-import { isOnAgenda, isPendingOnAgenda } from '@shared/match';
+import { isNoShowOnAgenda, isOnAgenda, isPendingOnAgenda } from '@shared/match';
 import { huliAgendaStatus } from '@shared/huli';
 import { compareTimes, toTime24h } from '@shared/time';
 
@@ -121,9 +122,9 @@ export function AgendaPage() {
     return (value || '').toLowerCase().includes(q.trim().toLowerCase());
   };
 
-  const agendaPool = useMemo(() => {
+  const { agendaPool, noShows } = useMemo(() => {
     const query = q.trim().toLowerCase();
-    return (data?.appointments || [])
+    const onAgenda = (data?.appointments || [])
       .filter((a) => {
         if (!isOnAgenda(a)) return false;
         if (!query) return true;
@@ -131,6 +132,10 @@ export function AgendaPage() {
           .some((value) => (value || '').toLowerCase().includes(query));
       })
       .sort((a, b) => compareTimes(a.startTime, b.startTime) || a.patientName.localeCompare(b.patientName, 'es'));
+    return {
+      agendaPool: onAgenda.filter((a) => !isNoShowOnAgenda(a)),
+      noShows: onAgenda.filter(isNoShowOnAgenda),
+    };
   }, [data, q]);
 
   const scheduled = useMemo(() => {
@@ -329,6 +334,14 @@ export function AgendaPage() {
           </div>
         </section>
       </div>
+
+      <NoShowSection
+        items={noShows}
+        detail={(r) => [seesAll ? r.doctor?.name : null, r.phone, r.notes].filter(Boolean).join(' · ')}
+        canAttend={(r) => Boolean(canEdit && !(data?.closedDoctorIds?.includes(r.doctorId || '') || data?.isClosed))}
+        isLocked={(r) => Boolean(data?.closedDoctorIds?.includes(r.doctorId || '') || data?.isClosed)}
+        onSelect={setSelected}
+      />
 
       {canEdit && selected && (
         <AttendModal
