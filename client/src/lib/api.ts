@@ -14,6 +14,7 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
       ...(options.headers || {}),
     },
     ...options,
+    cache: 'no-store',
   });
 
   if (!res.ok) {
@@ -37,7 +38,10 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  get: <T>(url: string) => request<T>(url),
+  get: <T>(url: string) => {
+    const join = url.includes('?') ? '&' : '?';
+    return request<T>(`${url}${join}_=${Date.now()}`);
+  },
   post: <T>(url: string, body?: unknown) =>
     request<T>(url, { method: 'POST', body: body instanceof FormData ? body : JSON.stringify(body ?? {}) }),
   patch: <T>(url: string, body?: unknown) =>

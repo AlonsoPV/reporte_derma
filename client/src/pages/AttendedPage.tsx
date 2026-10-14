@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { money } from '../components/KpiGrid';
@@ -6,7 +6,7 @@ import { DateQuickFilters } from '../components/DateQuickFilters';
 import { resolveDatePreset } from '../lib/utils';
 import { toTime24h } from '@shared/time';
 import { canMutateAttendance, canSeeAll, isReadOnlyRole, ORIGIN_LABELS, PROCEDURES } from '@shared/constants';
-import { AttendanceDeleteModal } from '../components/AttendanceActions';
+import { AttendanceDeleteModal, mergeAttendanceRow } from '../components/AttendanceActions';
 
 type Attendance = {
   id: string;
@@ -52,6 +52,7 @@ export function AttendedPage() {
   const [reopenReason, setReopenReason] = useState('');
   const [deleting, setDeleting] = useState<Attendance | null>(null);
   const canReopen = user?.role === 'ADMIN';
+  const loadGen = useRef(0);
 
   useEffect(() => {
     if (seesAll) {
@@ -59,11 +60,18 @@ export function AttendedPage() {
     }
   }, [seesAll]);
 
-  const load = async () => {
+  const fetchRows = async () => {
     const params = new URLSearchParams({ from, to });
     if (seesAll && doctorId) params.set('doctorId', doctorId);
     const data = await api.get<{ attendances: Attendance[] }>(`/api/attendances?${params}`);
-    setRows(data.attendances);
+    return data.attendances;
+  };
+
+  const load = async () => {
+    const gen = ++loadGen.current;
+    const attendances = await fetchRows();
+    if (gen !== loadGen.current) return;
+    setRows(attendances);
   };
 
   const visible = useMemo(() => {
@@ -136,9 +144,18 @@ export function AttendedPage() {
         if (status !== 404 && status !== 405) throw first;
         await api.patch(`/api/attendances/${selected.id}`, body);
       }
+      const saved = { id: selected.id, ...body };
+      const gen = ++loadGen.current;
+      setRows((prev) => mergeAttendanceRow(prev, saved));
       setSelected(null);
       setEditing(false);
-      await load();
+      try {
+        const attendances = await fetchRows();
+        if (gen !== loadGen.current) return;
+        setRows(mergeAttendanceRow(attendances, saved));
+      } catch {
+        /* keep the row already painted from the save */
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al guardar');
     } finally {
@@ -402,10 +419,19 @@ export function AttendedPage() {
           attendance={deleting}
           onClose={() => setDeleting(null)}
           onDeleted={async () => {
+            const deletedId = deleting.id;
+            const gen = ++loadGen.current;
+            setRows((prev) => prev.filter((row) => row.id !== deletedId));
             setDeleting(null);
             setSelected(null);
             setEditing(false);
-            await load();
+            try {
+              const attendances = await fetchRows();
+              if (gen !== loadGen.current) return;
+              setRows(attendances.filter((row) => row.id !== deletedId));
+            } catch {
+              /* keep the list already updated from the delete */
+            }
           }}
         />
       )}

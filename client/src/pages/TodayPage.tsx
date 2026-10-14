@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { Badge } from '../components/Badge';
@@ -17,6 +17,8 @@ import {
   AttendanceEditModal,
   AttendanceRowActions,
   attendanceDayClosed,
+  overlayAttendanceOnDay,
+  removeAttendanceFromDay,
   type EditableAttendance,
 } from '../components/AttendanceActions';
 
@@ -80,17 +82,23 @@ export function TodayPage() {
   const [listFilter, setListFilter] = useState<'pending' | 'other' | 'all'>('all');
   const [editingAttendance, setEditingAttendance] = useState<EditableAttendance | null>(null);
   const [deletingAttendance, setDeletingAttendance] = useState<EditableAttendance | null>(null);
+  const loadGen = useRef(0);
+
+  const fetchDay = () => api.get<DayData>(`/api/day?date=${date}`);
 
   const load = async () => {
+    const gen = ++loadGen.current;
     setLoading(true);
     setError('');
     try {
-      const res = await api.get<DayData>(`/api/day?date=${date}`);
+      const res = await fetchDay();
+      if (gen !== loadGen.current) return;
       setData(res);
     } catch (e) {
+      if (gen !== loadGen.current) return;
       setError(e instanceof Error ? e.message : 'Error al cargar');
     } finally {
-      setLoading(false);
+      if (gen === loadGen.current) setLoading(false);
     }
   };
 
@@ -164,8 +172,9 @@ export function TodayPage() {
       {error && <div className="rounded-xl bg-rose-50 px-4 py-3 text-rose-700">{error}</div>}
       {loading && <div className="text-slate-500">Cargando agenda…</div>}
 
-      <div className="grid items-start gap-4 md:grid-cols-2">
-        <section className="card flex max-h-[70vh] flex-col overflow-hidden">
+      <div className="grid items-start gap-4 md:grid-cols-2 md:items-stretch">
+        <div className="flex min-h-0 flex-col gap-3 md:max-h-[70vh]">
+        <section className="card flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-3 py-3">
             <div>
               <h2 className="font-semibold">Por atender</h2>
@@ -228,6 +237,16 @@ export function TodayPage() {
           </div>
         </section>
 
+        <NoShowSection
+          className="min-h-[10rem] flex-1"
+          items={noShows}
+          detail={(appt) => [appt.phone, appt.notes].filter(Boolean).join(' · ')}
+          canAttend={() => Boolean(canEdit && !data?.isClosed)}
+          isLocked={() => Boolean(data?.isClosed)}
+          onSelect={setSelected}
+        />
+        </div>
+
         <section className="flex max-h-[70vh] flex-col overflow-hidden rounded-2xl border-2 border-emerald-200 bg-white shadow-soft">
           <div className="border-b border-emerald-100 bg-emerald-50/70 px-3 py-3">
             <h2 className="font-semibold text-emerald-900">Atendidos de hoy</h2>
@@ -262,14 +281,6 @@ export function TodayPage() {
           </div>
         </section>
       </div>
-
-      <NoShowSection
-        items={noShows}
-        detail={(appt) => [appt.phone, appt.notes].filter(Boolean).join(' · ')}
-        canAttend={() => Boolean(canEdit && !data?.isClosed)}
-        isLocked={() => Boolean(data?.isClosed)}
-        onSelect={setSelected}
-      />
 
       {canEdit && selected && (
         <AttendModal
@@ -310,9 +321,17 @@ export function TodayPage() {
         <AttendanceEditModal
           attendance={editingAttendance}
           onClose={() => setEditingAttendance(null)}
-          onSaved={async () => {
+          onSaved={async (updated) => {
+            const gen = ++loadGen.current;
+            setData((prev) => (prev ? overlayAttendanceOnDay(prev, updated) : prev));
             setEditingAttendance(null);
-            await load();
+            try {
+              const res = await fetchDay();
+              if (gen !== loadGen.current) return;
+              setData(overlayAttendanceOnDay(res, updated));
+            } catch {
+              /* keep the row already painted from the save */
+            }
           }}
         />
       )}
@@ -321,8 +340,17 @@ export function TodayPage() {
           attendance={deletingAttendance}
           onClose={() => setDeletingAttendance(null)}
           onDeleted={async () => {
+            const deletedId = deletingAttendance.id;
+            const gen = ++loadGen.current;
+            setData((prev) => (prev ? removeAttendanceFromDay(prev, deletedId) : prev));
             setDeletingAttendance(null);
-            await load();
+            try {
+              const res = await fetchDay();
+              if (gen !== loadGen.current) return;
+              setData(removeAttendanceFromDay(res, deletedId));
+            } catch {
+              /* keep the list already updated from the delete */
+            }
           }}
         />
       )}

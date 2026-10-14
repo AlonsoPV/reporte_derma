@@ -91,7 +91,7 @@ router.get('/day', requireAuth, async (req, res) => {
         isAttended: a.attendances.length > 0,
         operationalStatus: a.attendances.length ? 'ATTENDED' : a.operationalStatus,
       })),
-      attendances,
+      attendances: attendances.map((a) => ({ ...a, amount: toNumber(a.amount) })),
       closure,
       closedDoctorIds,
       isClosed: doctorId ? closedDoctorIds.includes(doctorId) : false,
@@ -422,6 +422,7 @@ router.get('/attendances', requireAuth, async (req, res) => {
         const key = `${a.doctorId}|${formatDateOnly(a.attendanceDate)}`;
         return {
           ...a,
+          amount: toNumber(a.amount),
           isDayClosed: closedMap.has(key),
           closureId: closedMap.get(key) || null,
         };

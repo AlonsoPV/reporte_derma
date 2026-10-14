@@ -17,17 +17,19 @@ export function NoShowSection<T extends NoShowAppointment>({
   canAttend,
   isLocked,
   onSelect,
+  className = '',
 }: {
   items: T[];
   detail: (item: T) => string;
   canAttend: (item: T) => boolean;
   isLocked: (item: T) => boolean;
   onSelect: (item: T) => void;
+  className?: string;
 }) {
   if (items.length === 0) return null;
 
   return (
-    <section className="overflow-hidden rounded-2xl border-2 border-slate-300 bg-white shadow-soft">
+    <section className={`flex min-h-0 flex-col overflow-hidden rounded-2xl border-2 border-slate-300 bg-white shadow-soft ${className}`}>
       <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-100 px-3 py-3">
         <div>
           <h2 className="font-semibold text-slate-900">No se presentaron</h2>
@@ -37,7 +39,7 @@ export function NoShowSection<T extends NoShowAppointment>({
         </div>
         <span className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-slate-700">{items.length}</span>
       </div>
-      <div className="max-h-[40vh] overflow-auto">
+      <div className="min-h-0 flex-1 overflow-auto">
         {items.map((item) => {
           const attend = canAttend(item);
           const locked = isLocked(item);

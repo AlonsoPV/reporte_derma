@@ -57,6 +57,41 @@ export function AttendanceRowActions({
   );
 }
 
+export function mergeAttendanceRow<T extends { id: string }>(
+  rows: T[],
+  updated: Partial<EditableAttendance> & { id: string },
+): T[] {
+  const patch = {
+    ...updated,
+    ...(updated.amount !== undefined ? { amount: Number(updated.amount) } : {}),
+  };
+  return rows.map((row) => (row.id === updated.id ? { ...row, ...patch } : row));
+}
+
+type DayWithAttendances = {
+  attendances: Array<{ id: string; amount: number | string }>;
+  kpis: { amount: number; attended?: number };
+};
+
+export function overlayAttendanceOnDay<T extends DayWithAttendances>(
+  data: T,
+  updated: Partial<EditableAttendance> & { id: string },
+): T {
+  const attendances = mergeAttendanceRow(data.attendances, updated);
+  const amount = attendances.reduce((sum, row) => sum + Number(row.amount), 0);
+  return { ...data, attendances, kpis: { ...data.kpis, amount } };
+}
+
+export function removeAttendanceFromDay<T extends DayWithAttendances>(data: T, id: string): T {
+  const attendances = data.attendances.filter((row) => row.id !== id);
+  const amount = attendances.reduce((sum, row) => sum + Number(row.amount), 0);
+  return {
+    ...data,
+    attendances,
+    kpis: { ...data.kpis, attended: attendances.length, amount },
+  };
+}
+
 export function AttendanceEditModal({
   attendance,
   onClose,
@@ -64,7 +99,7 @@ export function AttendanceEditModal({
 }: {
   attendance: EditableAttendance;
   onClose: () => void;
-  onSaved: () => void | Promise<void>;
+  onSaved: (updated: EditableAttendance) => void | Promise<void>;
 }) {
   const [form, setForm] = useState({
     patientName: attendance.patientName,
@@ -101,14 +136,17 @@ export function AttendanceEditModal({
         amount: parsedAmount,
         notes: form.notes,
       };
+      let saved: EditableAttendance = { ...attendance, ...body };
       try {
-        await api.put(`/api/attendances/${attendance.id}`, body);
+        const res = await api.put<{ attendance: EditableAttendance }>(`/api/attendances/${attendance.id}`, body);
+        if (res?.attendance) saved = { ...saved, ...res.attendance, ...body };
       } catch (first) {
         const status = first instanceof Error && 'status' in first ? Number((first as Error & { status?: number }).status) : 0;
         if (status !== 404 && status !== 405) throw first;
-        await api.patch(`/api/attendances/${attendance.id}`, body);
+        const res = await api.patch<{ attendance: EditableAttendance }>(`/api/attendances/${attendance.id}`, body);
+        if (res?.attendance) saved = { ...saved, ...res.attendance, ...body };
       }
-      await onSaved();
+      await onSaved(saved);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al guardar');
     } finally {
