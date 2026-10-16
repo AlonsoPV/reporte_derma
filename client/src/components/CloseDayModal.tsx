@@ -192,6 +192,7 @@ export function CloseDayModal({
       {attendNow && (
         <AttendModal
           appointment={attendNow}
+          date={date}
           onClose={() => setAttendNow(null)}
           onSaved={async () => {
             setAttendNow(null);

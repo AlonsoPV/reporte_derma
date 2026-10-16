@@ -359,6 +359,7 @@ export function AgendaPage() {
       {canEdit && selected && (
         <AttendModal
           appointment={selected}
+          date={date}
           onClose={() => setSelected(null)}
           onSaved={async () => {
             setSelected(null);

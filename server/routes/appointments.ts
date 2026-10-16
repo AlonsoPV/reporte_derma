@@ -16,7 +16,7 @@ import { attendSchema, walkInSchema, classifyAppointmentSchema } from '../../sha
 import { canBypassClosedDay, canSeeAll } from '../../shared/constants';
 import { buildDayKpis } from '../../shared/match';
 import { toTime24h } from '../../shared/time';
-import type { OperationalStatus } from '@prisma/client';
+import type { OperationalStatus, Prisma } from '@prisma/client';
 
 const router = Router();
 
@@ -164,6 +164,41 @@ router.get('/appointments/:id', requireAuth, async (req, res) => {
   }
 });
 
+async function savePrescription(
+  tx: Prisma.TransactionClient,
+  input: {
+    recipe?: Array<{ category: string; productName: string; usage: string; recommendation: string }>;
+    appointmentId?: string | null;
+    doctorId: string;
+    patientName: string;
+    phone?: string | null;
+    attendanceDate: Date;
+    createdById: string;
+  },
+) {
+  if (!input.recipe?.length) return null;
+  return tx.prescription.create({
+    data: {
+      appointmentId: input.appointmentId || null,
+      doctorId: input.doctorId,
+      patientName: input.patientName,
+      phone: input.phone || null,
+      attendanceDate: input.attendanceDate,
+      createdById: input.createdById,
+      items: {
+        create: input.recipe.map((item, index) => ({
+          sortOrder: index,
+          category: item.category,
+          productName: item.productName,
+          usage: item.usage,
+          recommendation: item.recommendation,
+        })),
+      },
+    },
+    include: { items: { orderBy: { sortOrder: 'asc' } } },
+  });
+}
+
 router.post('/attend', requireAuth, async (req, res) => {
   try {
     const user = getUser(req);
@@ -223,7 +258,17 @@ router.post('/attend', requireAuth, async (req, res) => {
         data: { operationalStatus: 'ATTENDED', noShowReason: null, noShowNotes: null },
       });
 
-      return { attendances, appointment: updated };
+      const prescription = await savePrescription(tx, {
+        recipe: data.recipe,
+        appointmentId: appointment.id,
+        doctorId: appointment.doctorId!,
+        patientName: appointment.patientName,
+        phone: appointment.phone,
+        attendanceDate: appointment.appointmentDate,
+        createdById: user.id,
+      });
+
+      return { attendances, appointment: updated, prescription };
     });
 
     await writeAudit({
@@ -234,6 +279,7 @@ router.post('/attend', requireAuth, async (req, res) => {
       previousValue: { operationalStatus: appointment.operationalStatus },
       newValue: {
         items: data.items,
+        recipe: data.recipe,
         paymentMethod: data.paymentMethod,
         appointmentId: appointment.id,
       },
@@ -273,10 +319,10 @@ router.post('/walk-in', requireAuth, async (req, res) => {
 
     await assertDayOpen(doctorId, date);
 
-    const attendances = await prisma.$transaction(async (tx) => {
-      const created = [];
+    const result = await prisma.$transaction(async (tx) => {
+      const attendances = [];
       for (const item of data.items) {
-        created.push(await tx.attendance.create({
+        attendances.push(await tx.attendance.create({
           data: {
             doctorId,
             patientName: data.patientName.trim(),
@@ -296,18 +342,27 @@ router.post('/walk-in', requireAuth, async (req, res) => {
           include: { doctor: true },
         }));
       }
-      return created;
+      const prescription = await savePrescription(tx, {
+        recipe: data.recipe,
+        doctorId,
+        patientName: data.patientName.trim(),
+        phone: data.phone,
+        attendanceDate: date,
+        createdById: user.id,
+      });
+      return { attendances, prescription };
     });
+    const attendances = result.attendances;
 
     await writeAudit({
       userId: user.id,
       action: 'WALK_IN',
       entityType: 'attendance',
       entityId: attendances[0]?.id,
-      newValue: { items: data.items, patientName: data.patientName },
+      newValue: { items: data.items, recipe: data.recipe, patientName: data.patientName },
     });
 
-    res.json({ attendances });
+    res.json(result);
   } catch (e) {
     const err = e as Error & { status?: number };
     console.error(e);

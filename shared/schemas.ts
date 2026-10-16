@@ -1,10 +1,22 @@
 import { z } from 'zod';
 import { NO_SHOW_REASONS, PAYMENT_METHODS, PROCEDURES } from './constants';
+import { findRecipeProduct } from './recipes';
 
 export const attendanceLineSchema = z.object({
   treatment: z.enum(PROCEDURES, { errorMap: () => ({ message: 'Selecciona un procedimiento de la lista' }) }),
   amount: z.number().positive('El monto debe ser mayor a 0'),
   notes: z.string().optional(),
+});
+
+export const recipeLineSchema = z.object({
+  category: z.string().min(1, 'Selecciona una categoría'),
+  productName: z.string().min(1, 'Selecciona un producto'),
+  usage: z.string().trim().min(1, 'La forma de uso es obligatoria').max(500),
+  recommendation: z.string().trim().min(1, 'La recomendación es obligatoria').max(800),
+}).superRefine((line, ctx) => {
+  if (!findRecipeProduct(line.category, line.productName)) {
+    ctx.addIssue({ code: 'custom', message: 'Selecciona un producto de la lista', path: ['productName'] });
+  }
 });
 
 export const loginSchema = z
@@ -27,6 +39,7 @@ export const attendSchema = z.object({
   actualTime: z.string().min(1, 'Hora de atención requerida'),
   paymentMethod: z.enum(PAYMENT_METHODS).optional(),
   items: z.array(attendanceLineSchema).min(1, 'Agrega al menos una atención'),
+  recipe: z.array(recipeLineSchema).max(20).optional(),
 });
 
 export const walkInSchema = z.object({
@@ -39,6 +52,7 @@ export const walkInSchema = z.object({
   doctorId: z.string().optional(),
   attendanceDate: z.string().optional(),
   items: z.array(attendanceLineSchema).min(1, 'Agrega al menos una atención'),
+  recipe: z.array(recipeLineSchema).max(20).optional(),
 });
 
 export const classifyAppointmentSchema = z.object({

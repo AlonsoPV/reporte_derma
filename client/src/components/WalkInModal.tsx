@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { nowTime } from '../lib/utils';
 import { useAuth } from '../auth/AuthContext';
-import { ProcedureLinesEditor, type ProcedureLine } from './ProcedureLines';
+import { ProcedureLinesEditor, type ProcedureLine, type RecipeLine } from './ProcedureLines';
+import { formatDisplayDate } from '../lib/utils';
 
 export function WalkInModal({
   date,
@@ -22,6 +23,7 @@ export function WalkInModal({
   const [birthDate, setBirthDate] = useState('');
   const [actualTime, setActualTime] = useState(nowTime());
   const [lines, setLines] = useState<ProcedureLine[]>([]);
+  const [recipe, setRecipe] = useState<RecipeLine[]>([]);
   const [doctorId, setDoctorId] = useState(initialDoctorId || user?.doctorId || '');
   const [doctors, setDoctors] = useState<Array<{ id: string; name: string }>>([]);
   const [error, setError] = useState('');
@@ -38,22 +40,27 @@ export function WalkInModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
+      className="fixed inset-0 z-50 flex items-stretch justify-end bg-ink/40 p-0 sm:items-center sm:justify-center sm:p-4"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="card max-h-[90vh] w-full max-w-xl overflow-y-auto">
-        <div className="border-b border-slate-100 px-6 py-4">
+      <div className="card flex h-full w-full max-w-xl flex-col overflow-hidden sm:h-auto sm:max-h-[90vh] [&_.input]:text-base sm:[&_.input]:text-sm">
+        <div className="border-b border-slate-100 px-4 py-4 sm:px-6">
           <h2 className="font-display text-2xl font-semibold">Paciente nuevo</h2>
-          <p className="text-slate-500">No estaba agendado. Se registra directo en Atendidos.</p>
+          <p className="text-sm text-slate-500 sm:text-base">No estaba agendado. El monto y la receta se capturan aquí.</p>
         </div>
         <form
-          className="space-y-4 px-6 py-5"
+          id="walk-in-form"
+          className="flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5"
           onSubmit={async (e) => {
             e.preventDefault();
             if (!lines.length) {
               setError('Agrega al menos una atención.');
+              return;
+            }
+            if (recipe.some((line) => !line.usage.trim() || !line.recommendation.trim())) {
+              setError('La forma de uso y la recomendación no pueden quedar vacías.');
               return;
             }
             setSaving(true);
@@ -71,6 +78,12 @@ export function WalkInModal({
                   treatment: line.treatment,
                   amount: Number(line.amount),
                   notes: line.notes || undefined,
+                })),
+                recipe: recipe.map(({ category, productName, usage, recommendation }) => ({
+                  category,
+                  productName,
+                  usage,
+                  recommendation,
                 })),
               });
               onSaved();
@@ -116,13 +129,26 @@ export function WalkInModal({
               <input className="input" type="time" value={actualTime} onChange={(e) => setActualTime(e.target.value)} required />
             </div>
           </div>
-          <ProcedureLinesEditor lines={lines} onChange={setLines} />
+          <ProcedureLinesEditor
+            lines={lines}
+            onChange={setLines}
+            recipe={recipe}
+            onRecipeChange={setRecipe}
+            recipeContext={{
+              patientName,
+              phone,
+              doctorName: doctors.find((doctor) => doctor.id === doctorId)?.name || user?.name,
+              dateLabel: formatDisplayDate(date),
+            }}
+          />
           {error && <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
-          <div className="flex gap-2 pt-2">
-            <button type="button" className="btn-secondary flex-1" onClick={onClose}>Cancelar</button>
-            <button className="btn-primary flex-1" disabled={saving || lines.length === 0}>{saving ? 'Guardando…' : 'Agregar a atendidos'}</button>
-          </div>
         </form>
+        <div className="grid grid-cols-1 gap-2 border-t border-slate-100 px-4 py-3 sm:grid-cols-2 sm:px-6 sm:py-4">
+          <button type="button" className="btn-secondary w-full" onClick={onClose}>Cancelar</button>
+          <button type="submit" form="walk-in-form" className="btn-primary w-full" disabled={saving || lines.length === 0}>
+            {saving ? 'Guardando…' : 'Agregar a atendidos'}
+          </button>
+        </div>
       </div>
     </div>
   );

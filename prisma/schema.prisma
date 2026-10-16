@@ -64,6 +64,7 @@ model User {
   updatedAt    DateTime   @updatedAt
 
   createdAttendances Attendance[]    @relation("AttendanceCreatedBy")
+  createdPrescriptions Prescription[] @relation("PrescriptionCreatedBy")
   closedDays         DailyClosure[]  @relation("ClosureClosedBy")
   reopenedDays       DailyClosure[]  @relation("ClosureReopenedBy")
   imports            ImportBatch[]
@@ -81,9 +82,10 @@ model Doctor {
 
   user         User?
   appointments Appointment[]
-  attendances  Attendance[]
-  closures     DailyClosure[]
-  nameMappings DoctorNameMapping[]
+  attendances   Attendance[]
+  prescriptions Prescription[]
+  closures      DailyClosure[]
+  nameMappings  DoctorNameMapping[]
 
   @@map("doctors")
 }
@@ -128,7 +130,8 @@ model Appointment {
   createdAt               DateTime          @default(now())
   updatedAt               DateTime          @updatedAt
 
-  attendances Attendance[]
+  attendances   Attendance[]
+  prescriptions Prescription[]
 
   @@index([appointmentDate, doctorId])
   @@index([operationalStatus])
@@ -165,6 +168,39 @@ model Attendance {
   @@index([attendanceDate, doctorId])
   @@index([treatment])
   @@map("attendances")
+}
+
+model Prescription {
+  id             String   @id @default(cuid())
+  appointmentId  String?  @unique
+  appointment    Appointment? @relation(fields: [appointmentId], references: [id])
+  doctorId       String
+  doctor         Doctor   @relation(fields: [doctorId], references: [id])
+  patientName    String
+  phone          String?
+  attendanceDate DateTime @db.Date
+  createdById    String
+  createdBy      User     @relation("PrescriptionCreatedBy", fields: [createdById], references: [id])
+  items          PrescriptionItem[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([attendanceDate, doctorId])
+  @@map("prescriptions")
+}
+
+model PrescriptionItem {
+  id             String       @id @default(cuid())
+  prescriptionId String
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  sortOrder      Int
+  category       String
+  productName    String
+  usage          String
+  recommendation String
+
+  @@index([prescriptionId])
+  @@map("prescription_items")
 }
 
 model DailyClosure {

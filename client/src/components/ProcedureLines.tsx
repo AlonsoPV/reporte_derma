@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { PROCEDURES } from '@shared/constants';
 import { money } from './KpiGrid';
+import { RecipeEditor, type RecipeContext, type RecipeLine } from './RecipeEditor';
+
+export type { RecipeLine };
 
 export type ProcedureLine = {
   id: string;
@@ -12,9 +15,15 @@ export type ProcedureLine = {
 export function ProcedureLinesEditor({
   lines,
   onChange,
+  recipe,
+  onRecipeChange,
+  recipeContext,
 }: {
   lines: ProcedureLine[];
   onChange: (lines: ProcedureLine[]) => void;
+  recipe: RecipeLine[];
+  onRecipeChange: (lines: RecipeLine[]) => void;
+  recipeContext: RecipeContext;
 }) {
   const [treatment, setTreatment] = useState('');
   const [amount, setAmount] = useState('');
@@ -69,17 +78,19 @@ export function ProcedureLinesEditor({
           <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Opcional" />
         </div>
         {error && <div className="mt-2 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
-        <button type="button" className="btn-primary mt-3 w-full sm:w-auto" onClick={add}>
-          Agregar
+        <button type="button" className="btn-primary mt-3 w-full" onClick={add}>
+          Agregar atención
         </button>
       </div>
+
+      <RecipeEditor lines={recipe} onChange={onRecipeChange} context={recipeContext} />
 
       <div className="overflow-hidden rounded-2xl border border-slate-200">
         <div className="border-b border-slate-100 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
           Atenciones de este paciente
         </div>
         {lines.length === 0 ? (
-          <div className="px-3 py-6 text-center text-sm text-slate-500">Aún no hay atenciones. Elige procedimiento, monto y pulsa Agregar.</div>
+          <div className="px-3 py-6 text-center text-sm text-slate-500">Aún no hay atenciones. Elige procedimiento, monto y pulsa Agregar atención.</div>
         ) : (
           <ul>
             {lines.map((line) => (
