@@ -58,6 +58,7 @@ type Attendance = {
 
 type DayData = {
   date: string;
+  kpis: { amount: number; attended: number };
   appointments: Appointment[];
   attendances: Attendance[];
   isClosed: boolean;
