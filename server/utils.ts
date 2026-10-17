@@ -107,7 +107,10 @@ export function publicError(e: unknown, fallback: string) {
   const err = e as { status?: number; code?: string; message?: string };
   if (err.status && err.message) return err.message;
   if (err.code === 'P2002' || /unique constraint failed/i.test(err.message || '')) {
-    return 'No se pudieron guardar varios procedimientos. Recarga e intenta de nuevo.';
+    return 'Ese registro ya existe. Recarga la página e intenta de nuevo.';
+  }
+  if (err.code === 'P2021' || /does not exist in the current database/i.test(err.message || '') || /Invalid `prisma\./.test(err.message || '')) {
+    return fallback;
   }
   return err.message || fallback;
 }

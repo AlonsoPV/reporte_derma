@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import { clearDraft, draftForWalkIn, saveDraft } from '../lib/attendanceDraft';
 import { nowTime } from '../lib/utils';
 import { useAuth } from '../auth/AuthContext';
 import { ProcedureLinesEditor, type ProcedureLine, type RecipeLine } from './ProcedureLines';
@@ -17,14 +18,15 @@ export function WalkInModal({
   initialDoctorId?: string;
 }) {
   const { user } = useAuth();
-  const [patientName, setPatientName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
-  const [birthDate, setBirthDate] = useState('');
-  const [actualTime, setActualTime] = useState(nowTime());
-  const [lines, setLines] = useState<ProcedureLine[]>([]);
-  const [recipe, setRecipe] = useState<RecipeLine[]>([]);
-  const [doctorId, setDoctorId] = useState(initialDoctorId || user?.doctorId || '');
+  const stored = draftForWalkIn(date);
+  const [patientName, setPatientName] = useState(stored?.patientName || '');
+  const [phone, setPhone] = useState(stored?.phone || '');
+  const [email, setEmail] = useState(stored?.email || '');
+  const [birthDate, setBirthDate] = useState(stored?.birthDate || '');
+  const [actualTime, setActualTime] = useState(stored?.actualTime || nowTime());
+  const [lines, setLines] = useState<ProcedureLine[]>(stored?.lines || []);
+  const [recipe, setRecipe] = useState<RecipeLine[]>(stored?.recipe || []);
+  const [doctorId, setDoctorId] = useState(stored?.doctorId || initialDoctorId || user?.doctorId || '');
   const [doctors, setDoctors] = useState<Array<{ id: string; name: string }>>([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -38,11 +40,37 @@ export function WalkInModal({
     }
   }, [user?.role, initialDoctorId]);
 
+  useEffect(() => {
+    const flush = () => {
+      if (!patientName.trim() && !lines.length && !recipe.length) return;
+      saveDraft({
+        kind: 'walk-in',
+        date,
+        actualTime,
+        patientName,
+        phone,
+        email,
+        birthDate,
+        doctorId,
+        lines,
+        recipe,
+      });
+    };
+    flush();
+    window.addEventListener('pagehide', flush);
+    return () => window.removeEventListener('pagehide', flush);
+  }, [date, actualTime, patientName, phone, email, birthDate, doctorId, lines, recipe]);
+
+  const dismiss = () => {
+    clearDraft();
+    onClose();
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-stretch justify-end bg-ink/40 p-0 sm:items-center sm:justify-center sm:p-4"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) dismiss();
       }}
     >
       <div className="card flex h-full w-full max-w-xl flex-col overflow-hidden sm:h-auto sm:max-h-[90vh] [&_.input]:text-base sm:[&_.input]:text-sm">
@@ -86,6 +114,7 @@ export function WalkInModal({
                   recommendation,
                 })),
               });
+              clearDraft();
               onSaved();
             } catch (err) {
               setError(err instanceof Error ? err.message : 'Error');
@@ -144,7 +173,7 @@ export function WalkInModal({
           {error && <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
         </form>
         <div className="grid grid-cols-1 gap-2 border-t border-slate-100 px-4 py-3 sm:grid-cols-2 sm:px-6 sm:py-4">
-          <button type="button" className="btn-secondary w-full" onClick={onClose}>Cancelar</button>
+          <button type="button" className="btn-secondary w-full" onClick={dismiss}>Cancelar</button>
           <button type="submit" form="walk-in-form" className="btn-primary w-full" disabled={saving || lines.length === 0}>
             {saving ? 'Guardando…' : 'Agregar a atendidos'}
           </button>

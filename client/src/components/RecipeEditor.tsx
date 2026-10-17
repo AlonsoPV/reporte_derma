@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { RECIPE_CATALOG, findRecipeProduct, productsInCategory } from '@shared/recipes';
+import { downloadRecipePdf, recipePdfFile, shareRecipeFile, shareRecipePdf } from '../lib/recipePdf';
 
 export type RecipeLine = {
   id: string;
@@ -22,26 +23,6 @@ function escapeHtml(value: string) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
-}
-
-function whatsappUrl(phone: string | null | undefined, text: string) {
-  const digits = (phone || '').replace(/\D/g, '');
-  const normalized = digits.length === 10 ? `52${digits}` : digits;
-  const base = normalized ? `https://wa.me/${normalized}` : 'https://wa.me/';
-  return `${base}?text=${encodeURIComponent(text)}`;
-}
-
-function recipeMessage(context: RecipeContext, lines: RecipeLine[]) {
-  const blocks = lines.map((line) => (
-    `${line.category} — ${line.productName}\nUso: ${line.usage}\n${line.recommendation}`
-  ));
-  return [
-    `Recomendaciones para ${context.patientName || 'paciente'}`,
-    context.dateLabel,
-    context.doctorName ? `Doctora: ${context.doctorName}` : '',
-    '',
-    blocks.join('\n\n'),
-  ].filter((part) => part !== '').join('\n');
 }
 
 function printRecipe(context: RecipeContext, lines: RecipeLine[]) {
@@ -73,7 +54,7 @@ function printRecipe(context: RecipeContext, lines: RecipeLine[]) {
   <header>
     <h1>Recomendaciones</h1>
     <p class="meta">Paciente: ${escapeHtml(context.patientName || '—')}<br />
-    Fecha: ${escapeHtml(context.dateLabel)}${context.doctorName ? `<br />Doctora: ${escapeHtml(context.doctorName)}` : ''}</p>
+    Fecha: ${escapeHtml(context.dateLabel)}${context.doctorName ? `<br />Doctor: ${escapeHtml(context.doctorName)}` : ''}</p>
   </header>
   ${items}
 </body>
@@ -116,7 +97,27 @@ export function RecipeEditor({
   const [category, setCategory] = useState('');
   const [productName, setProductName] = useState('');
   const [error, setError] = useState('');
+  const [shareNote, setShareNote] = useState('');
+  const [sharing, setSharing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const readyFile = useRef<File | null>(null);
+
+  const shareTitle = `Recomendaciones ${context.patientName || ''}`.trim();
+  const shareText = context.phone
+    ? `Recomendaciones para ${context.patientName || 'el paciente'}. Tel. ${context.phone}`
+    : `Recomendaciones para ${context.patientName || 'el paciente'}`;
+
+  useEffect(() => {
+    let cancelled = false;
+    readyFile.current = null;
+    if (!lines.length) return;
+    void recipePdfFile(context, lines).then((file) => {
+      if (!cancelled) readyFile.current = file;
+    }).catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [lines, context.patientName, context.phone, context.doctorName, context.dateLabel]);
 
   const products = useMemo(() => productsInCategory(category), [category]);
 
@@ -258,18 +259,59 @@ export function RecipeEditor({
             })}
           </div>
           <div className="grid grid-cols-1 gap-2 border-t border-slate-100 p-3 sm:grid-cols-3">
-            <button type="button" className="btn-secondary w-full" onClick={() => printRecipe(context, lines)}>Imprimir</button>
-            <button type="button" className="btn-secondary w-full" onClick={() => printRecipe(context, lines)}>Guardar PDF</button>
-            <a
-              className="btn-primary w-full"
-              href={whatsappUrl(context.phone, recipeMessage(context, lines))}
-              target="_blank"
-              rel="noreferrer"
+            <button type="button" className="btn-secondary w-full" onClick={() => printRecipe(context, lines)} disabled={sharing}>Imprimir</button>
+            <button
+              type="button"
+              className="btn-secondary w-full"
+              disabled={sharing}
+              onClick={() => {
+                setShareNote('');
+                void downloadRecipePdf(context, lines)
+                  .then(() => setShareNote('PDF guardado en descargas.'))
+                  .catch(() => setShareNote('No se pudo guardar el PDF.'));
+              }}
             >
-              WhatsApp
-            </a>
+              Guardar PDF
+            </button>
+            <button
+              type="button"
+              className="btn-primary w-full"
+              disabled={sharing}
+              onClick={() => {
+                setShareNote('');
+                setSharing(true);
+                const file = readyFile.current;
+                const done = (result: 'shared' | 'downloaded') => {
+                  setSharing(false);
+                  setShareNote(
+                    result === 'shared'
+                      ? 'Elige WhatsApp para enviar el PDF. Lo escrito se conserva al volver.'
+                      : context.phone
+                        ? `Se descargó el PDF. En WhatsApp adjúntalo al chat ${context.phone}. Lo escrito sigue aquí.`
+                        : 'Se descargó el PDF. Ábrelo en WhatsApp y adjúntalo al chat. Lo escrito sigue aquí.',
+                  );
+                };
+                const fail = (shareError: unknown) => {
+                  if (shareError instanceof Error && shareError.name === 'AbortError') {
+                    setSharing(false);
+                    return;
+                  }
+                  void downloadRecipePdf(context, lines).then(() => done('downloaded')).catch(() => {
+                    setSharing(false);
+                    setShareNote('No se pudo compartir el PDF.');
+                  });
+                };
+                if (file) {
+                  void shareRecipeFile(file, shareTitle, shareText).then(done).catch(fail);
+                  return;
+                }
+                void shareRecipePdf(context, lines, shareText).then(done).catch(fail);
+              }}
+            >
+              {sharing ? 'Preparando PDF…' : 'WhatsApp'}
+            </button>
           </div>
-          <p className="px-3 pb-3 text-xs text-slate-500">Para el PDF, en la ventana de impresión elige Guardar como PDF.</p>
+          {shareNote && <p className="px-3 pb-3 text-xs text-slate-500">{shareNote}</p>}
         </div>
       )}
     </div>

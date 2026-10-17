@@ -16,6 +16,7 @@ import {
   type EditableAttendance,
 } from '../components/AttendanceActions';
 import { money } from '../components/KpiGrid';
+import { readDraft } from '../lib/attendanceDraft';
 import { formatDisplayDate, shiftDate, todayISO } from '../lib/utils';
 import { useAuth } from '../auth/AuthContext';
 import { canMutateAttendance, canSeeAll, isReadOnlyRole, ORIGIN_LABELS } from '@shared/constants';
@@ -126,6 +127,22 @@ export function AgendaPage() {
   useEffect(() => {
     load().catch(console.error);
   }, [doctorId, date]);
+
+  const restoredDraft = useRef(false);
+  useEffect(() => {
+    if (restoredDraft.current || !data || data.date !== date) return;
+    const draft = readDraft();
+    if (!draft || draft.date !== date) return;
+    if (draft.kind === 'walk-in') {
+      restoredDraft.current = true;
+      setWalkInOpen(true);
+      return;
+    }
+    const appointment = data.appointments.find((item) => item.id === draft.appointmentId);
+    if (!appointment) return;
+    restoredDraft.current = true;
+    setSelected(appointment);
+  }, [data, date]);
 
   const matchesQuery = (value: string | null | undefined) => {
     if (!q.trim()) return true;

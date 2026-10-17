@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { prisma } from '../db';
+import { ensurePrescriptionTables, prisma } from '../db';
 import { requireAuth, getUser } from '../middleware/auth';
 import {
   assertDoctorAccess,
@@ -177,6 +177,13 @@ async function savePrescription(
   },
 ) {
   if (!input.recipe?.length) return null;
+  if (input.appointmentId) {
+    const previous = await tx.prescription.findUnique({ where: { appointmentId: input.appointmentId } });
+    if (previous) {
+      await tx.prescriptionItem.deleteMany({ where: { prescriptionId: previous.id } });
+      await tx.prescription.delete({ where: { id: previous.id } });
+    }
+  }
   return tx.prescription.create({
     data: {
       appointmentId: input.appointmentId || null,
@@ -225,6 +232,7 @@ router.post('/attend', requireAuth, async (req, res) => {
     }
 
     await assertDayOpen(appointment.doctorId, appointment.appointmentDate);
+    if (data.recipe?.length) await ensurePrescriptionTables();
 
     const result = await prisma.$transaction(async (tx) => {
       const attendances = [];
@@ -318,6 +326,7 @@ router.post('/walk-in', requireAuth, async (req, res) => {
     const date = parseDateOnly(dateStr);
 
     await assertDayOpen(doctorId, date);
+    if (data.recipe?.length) await ensurePrescriptionTables();
 
     const result = await prisma.$transaction(async (tx) => {
       const attendances = [];
@@ -584,6 +593,7 @@ router.delete('/attendances/:id', requireAuth, async (req, res) => {
     if (!canBypassClosedDay(user.role)) {
       await assertDayOpen(existing.doctorId, existing.attendanceDate);
     }
+    if (existing.appointmentId) await ensurePrescriptionTables();
 
     const result = await prisma.$transaction(async (tx) => {
       await tx.attendance.delete({ where: { id: existing.id } });
@@ -595,6 +605,11 @@ router.delete('/attendances/:id', requireAuth, async (req, res) => {
             where: { id: existing.appointmentId },
             data: { operationalStatus: 'PENDING', noShowReason: null, noShowNotes: null },
           });
+          const prescription = await tx.prescription.findUnique({ where: { appointmentId: existing.appointmentId } });
+          if (prescription) {
+            await tx.prescriptionItem.deleteMany({ where: { prescriptionId: prescription.id } });
+            await tx.prescription.delete({ where: { id: prescription.id } });
+          }
           restoredAppointment = true;
         }
       }

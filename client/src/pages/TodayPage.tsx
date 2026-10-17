@@ -3,6 +3,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { Badge } from '../components/Badge';
 import { KpiGrid, money } from '../components/KpiGrid';
+import { readDraft } from '../lib/attendanceDraft';
 import { formatDisplayDate, todayISO } from '../lib/utils';
 import { canMutateAttendance, canSeeAll, isReadOnlyRole } from '@shared/constants';
 import { isNoShowOnAgenda, isOnAgenda, isPendingOnAgenda } from '@shared/match';
@@ -105,6 +106,22 @@ export function TodayPage() {
   useEffect(() => {
     load().catch(console.error);
   }, []);
+
+  const restoredDraft = useRef(false);
+  useEffect(() => {
+    if (restoredDraft.current || !data) return;
+    const draft = readDraft();
+    if (!draft || draft.date !== date) return;
+    if (draft.kind === 'walk-in') {
+      restoredDraft.current = true;
+      setWalkInOpen(true);
+      return;
+    }
+    const appointment = data.appointments.find((item) => item.id === draft.appointmentId);
+    if (!appointment) return;
+    restoredDraft.current = true;
+    setSelected(appointment);
+  }, [data, date]);
 
   const { agenda, noShows } = useMemo(() => {
     const onAgenda = (data?.appointments || [])

@@ -7,7 +7,7 @@ import connectPgSimple from 'connect-pg-simple';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
-import { ensureMultiAttendances, prisma } from './db';
+import { ensureMultiAttendances, ensurePrescriptionTables, prisma } from './db';
 
 import authRoutes from './routes/auth';
 import appointmentRoutes from './routes/appointments';
@@ -89,6 +89,7 @@ async function start() {
   }
   await prisma.$connect();
   await ensureMultiAttendances();
+  await ensurePrescriptionTables();
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server listening on http://0.0.0.0:${PORT}`);
   });

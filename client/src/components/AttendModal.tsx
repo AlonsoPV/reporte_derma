@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import { clearDraft, draftForAppointment, saveDraft } from '../lib/attendanceDraft';
 import { nowTime } from '../lib/utils';
 import { Badge } from './Badge';
 import { ProcedureLinesEditor, type ProcedureLine, type RecipeLine } from './ProcedureLines';
@@ -32,9 +33,10 @@ export function AttendModal({
   onSaved: () => void;
   date?: string;
 }) {
-  const [actualTime, setActualTime] = useState(nowTime());
-  const [lines, setLines] = useState<ProcedureLine[]>([]);
-  const [recipe, setRecipe] = useState<RecipeLine[]>([]);
+  const stored = draftForAppointment(appointment.id);
+  const [actualTime, setActualTime] = useState(stored?.actualTime || nowTime());
+  const [lines, setLines] = useState<ProcedureLine[]>(stored?.lines || []);
+  const [recipe, setRecipe] = useState<RecipeLine[]>(stored?.recipe || []);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState<'attend' | 'noshow' | null>(null);
 
@@ -65,12 +67,37 @@ export function AttendModal({
           recommendation,
         })),
       });
+      clearDraft();
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al guardar');
     } finally {
       setSaving(null);
     }
+  };
+
+  useEffect(() => {
+    const flush = () => {
+      if (!lines.length && !recipe.length) return;
+      saveDraft({
+        kind: 'attend',
+        date: date || todayISO(),
+        appointmentId: appointment.id,
+        actualTime,
+        patientName: appointment.patientName,
+        phone: appointment.phone || '',
+        lines,
+        recipe,
+      });
+    };
+    flush();
+    window.addEventListener('pagehide', flush);
+    return () => window.removeEventListener('pagehide', flush);
+  }, [actualTime, lines, recipe, appointment.id, appointment.patientName, appointment.phone, date]);
+
+  const dismiss = () => {
+    clearDraft();
+    onClose();
   };
 
   const huli = huliAgendaStatus(
@@ -88,6 +115,7 @@ export function AttendModal({
         operationalStatus: 'NO_SHOW',
         reason: 'NO_SE_PRESENTO',
       });
+      clearDraft();
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo marcar como no se presentó');
@@ -100,7 +128,7 @@ export function AttendModal({
     <div
       className="fixed inset-0 z-50 flex items-stretch justify-end bg-ink/40 p-0 sm:items-center sm:justify-center sm:p-4"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) dismiss();
       }}
     >
       <div className="card flex h-full w-full max-w-xl flex-col overflow-hidden sm:h-auto sm:max-h-[90vh] [&_.input]:text-base sm:[&_.input]:text-sm">
@@ -144,7 +172,7 @@ export function AttendModal({
           {error && <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
         </div>
         <div className="grid grid-cols-2 gap-2 border-t border-slate-100 px-4 py-3 sm:px-6 sm:py-4">
-          <button className="btn-secondary w-full" onClick={onClose} disabled={Boolean(saving)}>Cancelar</button>
+          <button className="btn-secondary w-full" onClick={dismiss} disabled={Boolean(saving)}>Cancelar</button>
           <button
             type="button"
             className="btn w-full bg-slate-100 text-slate-800 hover:bg-slate-200"
