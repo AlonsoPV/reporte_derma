@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { api } from '../lib/api';
+import { formatDisplayDate } from '../lib/utils';
 import { money } from './KpiGrid';
+import { RecipeEditor, type RecipeLine } from './RecipeEditor';
 import { PROCEDURES } from '@shared/constants';
 import { toTime24h } from '@shared/time';
 
 export type EditableAttendance = {
   id: string;
   actualTime: string;
+  attendanceDate?: string;
   patientName: string;
   phone?: string | null;
   email?: string | null;
@@ -16,6 +19,7 @@ export type EditableAttendance = {
   origin?: string;
   doctorId?: string | null;
   doctor?: { name: string } | null;
+  recipe?: RecipeLine[];
 };
 
 export function attendanceDayClosed(
@@ -110,8 +114,10 @@ export function AttendanceEditModal({
     amount: String(attendance.amount),
     notes: attendance.notes || '',
   });
+  const [recipe, setRecipe] = useState<RecipeLine[]>(attendance.recipe || []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const dateIso = String(attendance.attendanceDate || '').slice(0, 10);
 
   const parsedAmount = Number(String(form.amount).replace(/,/g, '').trim());
 
@@ -122,6 +128,10 @@ export function AttendanceEditModal({
     }
     if (!form.actualTime) {
       setError('La hora de atención es obligatoria');
+      return;
+    }
+    if (recipe.some((line) => !line.usage.trim() || !line.recommendation.trim())) {
+      setError('La forma de uso y la recomendación no pueden quedar vacías.');
       return;
     }
     setSaving(true);
@@ -135,16 +145,22 @@ export function AttendanceEditModal({
         treatment: form.treatment.trim(),
         amount: parsedAmount,
         notes: form.notes,
+        recipe: recipe.map(({ category, productName, usage, recommendation }) => ({
+          category,
+          productName,
+          usage,
+          recommendation,
+        })),
       };
       let saved: EditableAttendance = { ...attendance, ...body };
       try {
         const res = await api.put<{ attendance: EditableAttendance }>(`/api/attendances/${attendance.id}`, body);
-        if (res?.attendance) saved = { ...saved, ...res.attendance, ...body };
+        if (res?.attendance) saved = { ...saved, ...res.attendance, ...body, recipe: res.attendance.recipe ?? recipe };
       } catch (first) {
         const status = first instanceof Error && 'status' in first ? Number((first as Error & { status?: number }).status) : 0;
         if (status !== 404 && status !== 405) throw first;
         const res = await api.patch<{ attendance: EditableAttendance }>(`/api/attendances/${attendance.id}`, body);
-        if (res?.attendance) saved = { ...saved, ...res.attendance, ...body };
+        if (res?.attendance) saved = { ...saved, ...res.attendance, ...body, recipe: res.attendance.recipe ?? recipe };
       }
       await onSaved(saved);
     } catch (e) {
@@ -161,9 +177,10 @@ export function AttendanceEditModal({
         if (e.target === e.currentTarget && !saving) onClose();
       }}
     >
-      <div className="card flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden p-0">
-        <h2 className="font-display px-6 pt-6 text-2xl font-semibold">Editar atención</h2>
-        <div className="mt-4 min-h-0 flex-1 space-y-3 overflow-y-auto px-6">
+      <div className="card flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden p-0 [&_.input]:text-base sm:[&_.input]:text-sm">
+        <h2 className="font-display px-4 pt-5 text-2xl font-semibold sm:px-6 sm:pt-6">Editar atención</h2>
+        <p className="px-4 text-sm text-slate-500 sm:px-6">Puedes corregir el procedimiento, el monto y la receta.</p>
+        <div className="mt-4 min-h-0 flex-1 space-y-3 overflow-y-auto px-4 sm:px-6">
           <div>
             <label className="label">Paciente *</label>
             <input className="input" value={form.patientName} onChange={(e) => setForm({ ...form, patientName: e.target.value })} />
@@ -201,9 +218,19 @@ export function AttendanceEditModal({
             <label className="label">Observaciones</label>
             <textarea className="input min-h-[80px]" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
           </div>
+          <RecipeEditor
+            lines={recipe}
+            onChange={setRecipe}
+            context={{
+              patientName: form.patientName,
+              phone: form.phone,
+              doctorName: attendance.doctor?.name,
+              dateLabel: /^\d{4}-\d{2}-\d{2}$/.test(dateIso) ? formatDisplayDate(dateIso) : '',
+            }}
+          />
           {error && <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
         </div>
-        <div className="mt-4 flex gap-2 border-t border-slate-100 px-6 py-4">
+        <div className="mt-4 flex gap-2 border-t border-slate-100 px-4 py-4 sm:px-6">
           <button type="button" className="btn-secondary flex-1" disabled={saving} onClick={onClose}>Cancelar</button>
           <button type="button" className="btn-primary flex-1" disabled={saving} onClick={() => void save()}>
             {saving ? 'Guardando…' : 'Guardar cambios'}

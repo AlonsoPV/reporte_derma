@@ -49,8 +49,10 @@ type Attendance = {
   amount: number | string;
   notes?: string | null;
   origin: string;
+  attendanceDate?: string;
   doctorId?: string | null;
   doctor?: { name: string };
+  recipe?: Array<{ id: string; productName: string }>;
 };
 
 type DayData = {
@@ -281,6 +283,9 @@ export function TodayPage() {
                     <span className="block truncate text-xs text-slate-500">
                       {a.treatment} · {a.origin === 'WALK_IN' ? 'Sin cita' : 'Agendado'}
                     </span>
+                    {a.recipe?.length ? (
+                      <span className="block truncate text-xs text-slate-500">Receta: {a.recipe.map((line) => line.productName).join(', ')}</span>
+                    ) : null}
                   </span>
                   <span className="shrink-0 text-sm font-semibold text-emerald-800">{money(Number(a.amount))}</span>
                   <AttendanceRowActions

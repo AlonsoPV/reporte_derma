@@ -12,7 +12,8 @@ import {
   todayInMexico,
   writeAudit,
 } from '../utils';
-import { attendSchema, walkInSchema, classifyAppointmentSchema } from '../../shared/schemas';
+import { z } from 'zod';
+import { attendSchema, walkInSchema, classifyAppointmentSchema, recipeLineSchema } from '../../shared/schemas';
 import { canBypassClosedDay, canSeeAll } from '../../shared/constants';
 import { buildDayKpis } from '../../shared/match';
 import { toTime24h } from '../../shared/time';
@@ -75,6 +76,7 @@ router.get('/day', requireAuth, async (req, res) => {
     const closure = doctorId ? closures.find((c) => c.doctorId === doctorId) || null : null;
     const kpis = buildDayKpis(appointments, attendances, toNumber);
 
+    const recipeMap = await recipeMapFor(attendances);
     const lagged = appointments.filter((a) => a.attendances.length && a.operationalStatus !== 'ATTENDED');
     if (lagged.length) {
       await prisma.appointment.updateMany({
@@ -91,7 +93,11 @@ router.get('/day', requireAuth, async (req, res) => {
         isAttended: a.attendances.length > 0,
         operationalStatus: a.attendances.length ? 'ATTENDED' : a.operationalStatus,
       })),
-      attendances: attendances.map((a) => ({ ...a, amount: toNumber(a.amount) })),
+      attendances: attendances.map((a) => ({
+        ...a,
+        amount: toNumber(a.amount),
+        recipe: recipeMap.get(a.id) ?? [],
+      })),
       closure,
       closedDoctorIds,
       isClosed: doctorId ? closedDoctorIds.includes(doctorId) : false,
@@ -174,16 +180,27 @@ async function savePrescription(
     phone?: string | null;
     attendanceDate: Date;
     createdById: string;
+    lookupPatientName?: string;
   },
 ) {
-  if (!input.recipe?.length) return null;
-  if (input.appointmentId) {
-    const previous = await tx.prescription.findUnique({ where: { appointmentId: input.appointmentId } });
-    if (previous) {
-      await tx.prescriptionItem.deleteMany({ where: { prescriptionId: previous.id } });
-      await tx.prescription.delete({ where: { id: previous.id } });
-    }
+  const previous = input.appointmentId
+    ? await tx.prescription.findUnique({ where: { appointmentId: input.appointmentId } })
+    : input.lookupPatientName
+      ? await tx.prescription.findFirst({
+          where: {
+            appointmentId: null,
+            doctorId: input.doctorId,
+            attendanceDate: input.attendanceDate,
+            patientName: input.lookupPatientName,
+          },
+          orderBy: { createdAt: 'desc' },
+        })
+      : null;
+  if (previous) {
+    await tx.prescriptionItem.deleteMany({ where: { prescriptionId: previous.id } });
+    await tx.prescription.delete({ where: { id: previous.id } });
   }
+  if (!input.recipe?.length) return null;
   return tx.prescription.create({
     data: {
       appointmentId: input.appointmentId || null,
@@ -204,6 +221,58 @@ async function savePrescription(
     },
     include: { items: { orderBy: { sortOrder: 'asc' } } },
   });
+}
+
+function serializeRecipe(items: Array<{ id: string; category: string; productName: string; usage: string; recommendation: string }> | undefined) {
+  return (items ?? []).map((item) => ({
+    id: item.id,
+    category: item.category,
+    productName: item.productName,
+    usage: item.usage,
+    recommendation: item.recommendation,
+  }));
+}
+
+async function recipeMapFor(rows: Array<{
+  id: string;
+  appointmentId: string | null;
+  doctorId: string;
+  patientName: string;
+  attendanceDate: Date;
+}>) {
+  const map = new Map<string, ReturnType<typeof serializeRecipe>>();
+  if (!rows.length) return map;
+  try {
+    await ensurePrescriptionTables();
+    const appointmentIds = [...new Set(rows.map((row) => row.appointmentId).filter((id): id is string => Boolean(id)))];
+    const doctorIds = [...new Set(rows.map((row) => row.doctorId))];
+    const dates = [...new Map(rows.map((row) => [formatDateOnly(row.attendanceDate), row.attendanceDate])).values()];
+    const or: Prisma.PrescriptionWhereInput[] = [];
+    if (appointmentIds.length) or.push({ appointmentId: { in: appointmentIds } });
+    if (doctorIds.length && dates.length) {
+      or.push({ appointmentId: null, doctorId: { in: doctorIds }, attendanceDate: { in: dates } });
+    }
+    if (!or.length) return map;
+    const prescriptions = await prisma.prescription.findMany({
+      where: { OR: or },
+      include: { items: { orderBy: { sortOrder: 'asc' } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    for (const row of rows) {
+      const match = row.appointmentId
+        ? prescriptions.find((item) => item.appointmentId === row.appointmentId)
+        : prescriptions.find((item) => (
+            !item.appointmentId
+            && item.doctorId === row.doctorId
+            && item.patientName === row.patientName
+            && formatDateOnly(item.attendanceDate) === formatDateOnly(row.attendanceDate)
+          ));
+      map.set(row.id, serializeRecipe(match?.items));
+    }
+  } catch (error) {
+    console.error('recipe map', error);
+  }
+  return map;
 }
 
 router.post('/attend', requireAuth, async (req, res) => {
@@ -480,6 +549,7 @@ router.get('/attendances', requireAuth, async (req, res) => {
         })
       : [];
     const closedMap = new Map(closed.map((c) => [`${c.doctorId}|${formatDateOnly(c.date)}`, c.id]));
+    const recipeMap = await recipeMapFor(attendances);
 
     res.json({
       attendances: attendances.map((a) => {
@@ -489,6 +559,7 @@ router.get('/attendances', requireAuth, async (req, res) => {
           amount: toNumber(a.amount),
           isDayClosed: closedMap.has(key),
           closureId: closedMap.get(key) || null,
+          recipe: recipeMap.get(a.id) ?? [],
         };
       }),
     });
@@ -510,7 +581,7 @@ async function updateAttendanceHandler(req: Request, res: Response) {
       await assertDayOpen(existing.doctorId, existing.attendanceDate);
     }
 
-    const { treatment, amount, notes, patientName, phone, email, actualTime } = req.body ?? {};
+    const { treatment, amount, notes, patientName, phone, email, actualTime, recipe } = req.body ?? {};
 
     if (amount != null && amount !== '' && toNumber(amount) <= 0) {
       return res.status(400).json({ error: 'El monto debe ser mayor a 0' });
@@ -519,23 +590,70 @@ async function updateAttendanceHandler(req: Request, res: Response) {
       return res.status(400).json({ error: 'Tratamiento obligatorio' });
     }
 
+    let nextRecipe: Array<{ category: string; productName: string; usage: string; recommendation: string }> | undefined;
+    if (recipe !== undefined) {
+      const parsedRecipe = z.array(recipeLineSchema).max(20).safeParse(recipe);
+      if (!parsedRecipe.success) {
+        return res.status(400).json({ error: parsedRecipe.error.errors[0]?.message ?? 'Receta inválida' });
+      }
+      nextRecipe = parsedRecipe.data;
+      await ensurePrescriptionTables();
+    }
+
     const nextTime = actualTime != null && String(actualTime).trim()
       ? (toTime24h(String(actualTime)) || existing.actualTime)
       : existing.actualTime;
+    const nextName = patientName != null ? String(patientName).trim() : existing.patientName;
+    const nextPhone = phone !== undefined ? phone || null : existing.phone;
+    const nextEmail = email !== undefined ? email || null : existing.email;
 
-    const updated = await prisma.attendance.update({
-      where: { id: existing.id },
-      data: {
-        treatment: treatment != null ? String(treatment).trim() : existing.treatment,
-        amount: amount != null && amount !== '' ? toNumber(amount) : existing.amount,
-        paymentMethod: existing.paymentMethod,
-        notes: notes !== undefined ? notes || null : existing.notes,
-        patientName: patientName != null ? String(patientName).trim() : existing.patientName,
-        phone: phone !== undefined ? phone || null : existing.phone,
-        email: email !== undefined ? email || null : existing.email,
-        actualTime: nextTime,
-      },
-      include: { doctor: true },
+    const updated = await prisma.$transaction(async (tx) => {
+      const attendance = await tx.attendance.update({
+        where: { id: existing.id },
+        data: {
+          treatment: treatment != null ? String(treatment).trim() : existing.treatment,
+          amount: amount != null && amount !== '' ? toNumber(amount) : existing.amount,
+          paymentMethod: existing.paymentMethod,
+          notes: notes !== undefined ? notes || null : existing.notes,
+          patientName: nextName,
+          phone: nextPhone,
+          email: nextEmail,
+          actualTime: nextTime,
+        },
+        include: { doctor: true },
+      });
+
+      if (!existing.appointmentId && (nextName !== existing.patientName || nextPhone !== existing.phone || nextEmail !== existing.email)) {
+        await tx.attendance.updateMany({
+          where: {
+            id: { not: existing.id },
+            appointmentId: null,
+            doctorId: existing.doctorId,
+            attendanceDate: existing.attendanceDate,
+            patientName: existing.patientName,
+            origin: 'WALK_IN',
+          },
+          data: { patientName: nextName, phone: nextPhone, email: nextEmail },
+        });
+      }
+
+      const prescription = nextRecipe === undefined
+        ? null
+        : await savePrescription(tx, {
+            recipe: nextRecipe,
+            appointmentId: existing.appointmentId,
+            doctorId: existing.doctorId,
+            patientName: nextName,
+            phone: nextPhone,
+            attendanceDate: existing.attendanceDate,
+            createdById: user.id,
+            lookupPatientName: existing.patientName,
+          });
+
+      return {
+        attendance,
+        recipe: nextRecipe === undefined ? undefined : serializeRecipe(prescription?.items),
+      };
     });
 
     try {
@@ -554,13 +672,14 @@ async function updateAttendanceHandler(req: Request, res: Response) {
           actualTime: existing.actualTime,
         },
         newValue: {
-          patientName: updated.patientName,
-          treatment: updated.treatment,
-          amount: toNumber(updated.amount),
-          paymentMethod: updated.paymentMethod,
-          notes: updated.notes,
-          phone: updated.phone,
-          actualTime: updated.actualTime,
+          patientName: updated.attendance.patientName,
+          treatment: updated.attendance.treatment,
+          amount: toNumber(updated.attendance.amount),
+          paymentMethod: updated.attendance.paymentMethod,
+          notes: updated.attendance.notes,
+          phone: updated.attendance.phone,
+          actualTime: updated.attendance.actualTime,
+          recipe: updated.recipe,
         },
       });
     } catch (auditErr) {
@@ -569,8 +688,9 @@ async function updateAttendanceHandler(req: Request, res: Response) {
 
     res.json({
       attendance: {
-        ...updated,
-        amount: toNumber(updated.amount),
+        ...updated.attendance,
+        amount: toNumber(updated.attendance.amount),
+        ...(updated.recipe !== undefined ? { recipe: updated.recipe } : {}),
       },
     });
   } catch (e) {
@@ -593,7 +713,7 @@ router.delete('/attendances/:id', requireAuth, async (req, res) => {
     if (!canBypassClosedDay(user.role)) {
       await assertDayOpen(existing.doctorId, existing.attendanceDate);
     }
-    if (existing.appointmentId) await ensurePrescriptionTables();
+    await ensurePrescriptionTables();
 
     const result = await prisma.$transaction(async (tx) => {
       await tx.attendance.delete({ where: { id: existing.id } });
@@ -605,13 +725,29 @@ router.delete('/attendances/:id', requireAuth, async (req, res) => {
             where: { id: existing.appointmentId },
             data: { operationalStatus: 'PENDING', noShowReason: null, noShowNotes: null },
           });
-          const prescription = await tx.prescription.findUnique({ where: { appointmentId: existing.appointmentId } });
-          if (prescription) {
-            await tx.prescriptionItem.deleteMany({ where: { prescriptionId: prescription.id } });
-            await tx.prescription.delete({ where: { id: prescription.id } });
-          }
           restoredAppointment = true;
         }
+      }
+      const remainingVisit = existing.appointmentId
+        ? await tx.attendance.count({ where: { appointmentId: existing.appointmentId } })
+        : await tx.attendance.count({
+            where: {
+              appointmentId: null,
+              doctorId: existing.doctorId,
+              attendanceDate: existing.attendanceDate,
+              patientName: existing.patientName,
+            },
+          });
+      if (remainingVisit === 0) {
+        await savePrescription(tx, {
+          recipe: [],
+          appointmentId: existing.appointmentId,
+          doctorId: existing.doctorId,
+          patientName: existing.patientName,
+          attendanceDate: existing.attendanceDate,
+          createdById: user.id,
+          lookupPatientName: existing.patientName,
+        });
       }
       return { restoredAppointment };
     });

@@ -52,8 +52,10 @@ type Attendance = {
   amount: number | string;
   origin: keyof typeof ORIGIN_LABELS;
   notes?: string | null;
+  attendanceDate?: string;
   doctorId?: string | null;
   doctor?: { name: string };
+  recipe?: Array<{ id: string; productName: string }>;
 };
 
 type DayData = {
@@ -356,6 +358,9 @@ export function AgendaPage() {
                     <span className="block truncate text-xs text-slate-500">
                       {[a.treatment, seesAll ? a.doctor?.name : null, ORIGIN_LABELS[a.origin], a.notes].filter(Boolean).join(' · ')}
                     </span>
+                    {a.recipe?.length ? (
+                      <span className="block truncate text-xs text-slate-500">Receta: {a.recipe.map((line) => line.productName).join(', ')}</span>
+                    ) : null}
                   </span>
                   <span className="shrink-0 text-sm font-semibold text-emerald-800">{money(Number(a.amount))}</span>
                   <AttendanceRowActions

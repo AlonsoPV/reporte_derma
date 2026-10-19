@@ -3,10 +3,11 @@ import { api } from '../lib/api';
 import { useAuth } from '../auth/AuthContext';
 import { money } from '../components/KpiGrid';
 import { DateQuickFilters } from '../components/DateQuickFilters';
-import { resolveDatePreset } from '../lib/utils';
+import { formatDisplayDate, resolveDatePreset } from '../lib/utils';
 import { toTime24h } from '@shared/time';
 import { canMutateAttendance, canSeeAll, isReadOnlyRole, ORIGIN_LABELS, PROCEDURES } from '@shared/constants';
 import { AttendanceDeleteModal, mergeAttendanceRow } from '../components/AttendanceActions';
+import { RecipeEditor, type RecipeLine } from '../components/RecipeEditor';
 
 type Attendance = {
   id: string;
@@ -22,6 +23,7 @@ type Attendance = {
   doctor?: { name: string };
   isDayClosed?: boolean;
   closureId?: string | null;
+  recipe?: RecipeLine[];
 };
 
 export function AttendedPage() {
@@ -46,6 +48,7 @@ export function AttendedPage() {
     amount: '',
     notes: '',
   });
+  const [recipe, setRecipe] = useState<RecipeLine[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [reopenId, setReopenId] = useState<string | null>(null);
@@ -111,6 +114,7 @@ export function AttendedPage() {
       amount: String(r.amount),
       notes: r.notes || '',
     });
+    setRecipe(r.recipe || []);
   };
 
   const save = async () => {
@@ -125,6 +129,10 @@ export function AttendedPage() {
       setError('Nombre, tratamiento y monto son obligatorios');
       return;
     }
+    if (recipe.some((line) => !line.usage.trim() || !line.recommendation.trim())) {
+      setError('La forma de uso y la recomendación no pueden quedar vacías.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
@@ -136,6 +144,12 @@ export function AttendedPage() {
         treatment: form.treatment.trim(),
         amount: parsedAmount,
         notes: form.notes,
+        recipe: recipe.map(({ category, productName, usage, recommendation }) => ({
+          category,
+          productName,
+          usage,
+          recommendation,
+        })),
       };
       try {
         await api.put(`/api/attendances/${selected.id}`, body);
@@ -144,7 +158,7 @@ export function AttendedPage() {
         if (status !== 404 && status !== 405) throw first;
         await api.patch(`/api/attendances/${selected.id}`, body);
       }
-      const saved = { id: selected.id, ...body };
+      const saved = { id: selected.id, ...body, recipe };
       const gen = ++loadGen.current;
       setRows((prev) => mergeAttendanceRow(prev, saved));
       setSelected(null);
@@ -220,6 +234,9 @@ export function AttendedPage() {
                   <span className="block truncate text-xs text-slate-500">
                     {[r.treatment, seesAll ? r.doctor?.name : null, ORIGIN_LABELS[r.origin]].filter(Boolean).join(' · ')}
                   </span>
+                  {r.recipe?.length ? (
+                    <span className="block truncate text-xs text-slate-500">Receta: {r.recipe.map((line) => line.productName).join(', ')}</span>
+                  ) : null}
                 </span>
                 <span className="shrink-0 text-sm font-semibold">{money(Number(r.amount))}</span>
                 <span className="flex shrink-0 gap-1">
@@ -295,6 +312,20 @@ export function AttendedPage() {
                 <div>Teléfono: {selected.phone || '—'}</div>
                 <div>Correo: {selected.email || '—'}</div>
                 <div>Notas: {selected.notes || '—'}</div>
+                <div>
+                  Receta:{' '}
+                  {selected.recipe?.length ? (
+                    <div className="mt-2 space-y-2">
+                      {selected.recipe.map((line) => (
+                        <div key={line.id}>
+                          <strong>{line.productName}</strong>
+                          <div>Uso. {line.usage}</div>
+                          <div>{line.recommendation}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : '—'}
+                </div>
               </div>
             ) : (
               <div className="mt-4 space-y-3">
@@ -335,6 +366,16 @@ export function AttendedPage() {
                   <label className="label">Observaciones</label>
                   <textarea className="input min-h-[80px]" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
                 </div>
+                <RecipeEditor
+                  lines={recipe}
+                  onChange={setRecipe}
+                  context={{
+                    patientName: form.patientName,
+                    phone: form.phone,
+                    doctorName: selected.doctor?.name,
+                    dateLabel: formatDisplayDate(String(selected.attendanceDate).slice(0, 10)),
+                  }}
+                />
                 {error && <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
               </div>
             )}
