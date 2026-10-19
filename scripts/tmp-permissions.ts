@@ -1,3 +1,5 @@
+import { prisma } from '../server/db';
+
 const base = 'http://127.0.0.1:5050';
 
 type Session = { cookie: string; user: { id: string; role: string; name: string; doctorId: string | null } };
@@ -92,7 +94,7 @@ if (foreign && own) {
 }
 
 const receptionAttend = await call(reception, 'POST', '/api/attend', { appointmentId: 'x', actualTime: '10:00', items: [{ treatment: 'Consulta', amount: 100 }] });
-expect('reception cannot attend', receptionAttend.status === 403, `${receptionAttend.status} ${receptionAttend.json?.error || ''}`);
+expect('reception cannot attend', receptionAttend.status === 403 && /solo consulta/i.test(receptionAttend.json?.error || ''), `${receptionAttend.status} ${receptionAttend.json?.error || ''}`);
 const receptionWalk = await call(reception, 'POST', '/api/walk-in', { patientName: 'No', actualTime: '10:00', doctorId: ana.user.doctorId, items: [{ treatment: 'Consulta', amount: 100 }] });
 expect('reception cannot walk-in', receptionWalk.status === 403, `${receptionWalk.status} ${receptionWalk.json?.error || ''}`);
 const receptionEdit = await call(reception, 'PUT', '/api/attendances/x', { patientName: 'No', amount: 10, treatment: 'Consulta' });
@@ -133,11 +135,39 @@ if (own) {
   expect('ana can open her appointment', ownPeek.status === 200, String(ownPeek.status));
 }
 
+await prisma.user.deleteMany({ where: { email: 'supervisor.validador@clinicademo.local' } });
+const created = await call(admin, 'POST', '/api/admin/users', {
+  name: 'Validador Supervisor',
+  email: 'supervisor.validador@clinicademo.local',
+  password: 'Demo123!',
+  role: 'SUPERVISOR',
+});
+expect('admin can create supervisor', created.status === 200 && created.json?.user?.role === 'SUPERVISOR', `${created.status} ${created.json?.error || created.json?.user?.role || ''}`);
+if (created.json?.user?.id) {
+  try {
+    const supervisor = await login({ email: 'supervisor.validador@clinicademo.local', password: 'Demo123!' });
+    expect('supervisor role', supervisor.user.role === 'SUPERVISOR', supervisor.user.role);
+    const supDay = await call(supervisor, 'GET', '/api/day?date=2026-10-17');
+    expect('supervisor sees the whole day', supDay.status === 200, String(supDay.status));
+    const supDash = await call(supervisor, 'GET', '/api/reports/dashboard-admin');
+    expect('supervisor can open the dashboard', supDash.status === 200, String(supDash.status));
+    const supWrite = await call(supervisor, 'POST', '/api/walk-in', { patientName: 'No', actualTime: '10:00', doctorId: ana.user.doctorId, items: [{ treatment: 'Consulta', amount: 100 }] });
+    expect('supervisor cannot write', supWrite.status === 403 && /solo consulta/i.test(supWrite.json?.error || ''), `${supWrite.status} ${supWrite.json?.error || ''}`);
+    const supAdmin = await call(supervisor, 'GET', '/api/admin/users');
+    expect('supervisor cannot administer users', supAdmin.status === 403, String(supAdmin.status));
+    const supReopen = await call(supervisor, 'POST', '/api/closures/reopen', { closureId: 'x', reason: 'prueba' });
+    expect('supervisor cannot reopen', supReopen.status === 403, `${supReopen.status} ${supReopen.json?.error || ''}`);
+  } finally {
+    await prisma.user.deleteMany({ where: { email: 'supervisor.validador@clinicademo.local' } });
+  }
+}
+
 const adminUsers = await call(admin, 'GET', '/api/admin/users');
 expect('admin can administer users', adminUsers.status === 200, String(adminUsers.status));
 const adminDash = await call(admin, 'GET', '/api/reports/dashboard-admin');
 expect('admin can open the dashboard', adminDash.status === 200, String(adminDash.status));
 
+await prisma.$disconnect();
 if (failures.length) {
   console.log(`\n${failures.length} failed`);
   process.exit(1);

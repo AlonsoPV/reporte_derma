@@ -27,7 +27,9 @@ const adminLinks = [
 
 function roleCaption(role?: string) {
   if (role === 'ADMIN') return 'Administrador · toda la operación';
-  if (isReadOnlyRole(role)) return 'Recepción · consulta, sin editar';
+  if (role === 'RECEPTION') return 'Recepción · consulta, sin editar';
+  if (role === 'SUPERVISOR') return 'Supervisor · consulta, sin editar';
+  if (role === 'ACCOUNTING') return 'Contabilidad · consulta, sin editar';
   return 'Médico · solo tu información';
 }
 
@@ -99,7 +101,7 @@ export function AppLayout() {
       <main className="mx-auto max-w-7xl px-4 py-4 sm:py-6">
         {isReadOnlyRole(user?.role) && (
           <div className="mb-6 rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-900">
-            Cuenta de recepción: puedes ver toda la operación. No se permiten cambios.
+            Cuenta de consulta: puedes ver toda la operación. No se permiten cambios.
           </div>
         )}
         <Outlet />

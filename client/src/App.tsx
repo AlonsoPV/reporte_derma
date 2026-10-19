@@ -9,7 +9,7 @@ import { TodayPage } from './pages/TodayPage';
 import { ImportPage } from './pages/ImportPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { AdminPage } from './pages/AdminPage';
-import { homePathForRole } from '@shared/constants';
+import { CLINIC_WIDE_ROLES, homePathForRole } from '@shared/constants';
 
 function Protected({ roles }: { roles?: string[] }) {
   const { user, loading } = useAuth();
@@ -35,7 +35,7 @@ export default function App() {
             <Route path="/agenda" element={<AgendaPage />} />
             <Route path="/atendidos" element={<AttendedPage />} />
             <Route path="/reportes" element={<ReportsPage />} />
-            <Route element={<Protected roles={['ADMIN', 'RECEPTION']} />}>
+            <Route element={<Protected roles={[...CLINIC_WIDE_ROLES]} />}>
               <Route path="/admin" element={<AdminDashboardPage />} />
             </Route>
             <Route element={<Protected roles={['ADMIN']} />}>

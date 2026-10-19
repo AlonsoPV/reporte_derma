@@ -17,12 +17,15 @@ export const ROLE_LABELS: Record<Role, string> = {
   ACCOUNTING: 'Contabilidad',
 };
 
+export const CLINIC_WIDE_ROLES: Role[] = ['ADMIN', 'RECEPTION', 'SUPERVISOR', 'ACCOUNTING'];
+export const READ_ONLY_ROLES: Role[] = ['RECEPTION', 'SUPERVISOR', 'ACCOUNTING'];
+
 export function canSeeAll(role?: string | null) {
-  return role === 'ADMIN' || role === 'RECEPTION';
+  return Boolean(role && (CLINIC_WIDE_ROLES as readonly string[]).includes(role));
 }
 
 export function isReadOnlyRole(role?: string | null) {
-  return role === 'RECEPTION';
+  return Boolean(role && (READ_ONLY_ROLES as readonly string[]).includes(role));
 }
 
 export function canBypassClosedDay(role?: string | null) {

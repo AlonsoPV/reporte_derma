@@ -66,6 +66,8 @@ assert.equal(canMutateAttendance('DOCTOR', true), false);
 assert.equal(canMutateAttendance('ADMIN', true), true);
 assert.equal(canMutateAttendance('ADMIN', false), true);
 assert.equal(canMutateAttendance('RECEPTION', false), false);
+assert.equal(canMutateAttendance('SUPERVISOR', false), false);
+assert.equal(canMutateAttendance('ACCOUNTING', true), false);
 console.log('OK  canMutateAttendance rules');
 
 const doctors = await prisma.doctor.findMany({ where: { name: { contains: 'Carlos' } } });

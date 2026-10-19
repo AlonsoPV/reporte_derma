@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { SessionUser } from '../../shared/types';
+import { isReadOnlyRole } from '../../shared/constants';
 
 declare module 'express-session' {
   interface SessionData {
@@ -27,11 +28,11 @@ export function requireRole(...roles: string[]) {
 
 export function rejectWritesIfReadOnly(req: Request, res: Response, next: NextFunction) {
   const user = req.session.user;
-  if (!user || user.role !== 'RECEPTION') return next();
+  if (!user || !isReadOnlyRole(user.role)) return next();
   const method = req.method.toUpperCase();
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return next();
   if (req.path === '/auth/logout' || req.path.endsWith('/logout')) return next();
-  return res.status(403).json({ error: 'Recepción es solo consulta. No se permiten cambios.' });
+  return res.status(403).json({ error: 'Esta cuenta es solo consulta. No se permiten cambios.' });
 }
 
 export function getUser(req: Request): SessionUser {
