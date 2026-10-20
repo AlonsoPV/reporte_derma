@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { RECIPE_CATALOG, findRecipeProduct, productsInCategory } from '@shared/recipes';
+import { RECIPE_BRANDS, RECIPE_CATALOG, findRecipeProduct, productsInCategory } from '@shared/recipes';
 import { downloadRecipePdf, recipePdfFile, shareRecipeFile, shareRecipePdf } from '../lib/recipePdf';
 
 export type RecipeLine = {
@@ -95,6 +95,7 @@ export function RecipeEditor({
   context: RecipeContext;
 }) {
   const [category, setCategory] = useState('');
+  const [brand, setBrand] = useState('');
   const [productName, setProductName] = useState('');
   const [error, setError] = useState('');
   const [shareNote, setShareNote] = useState('');
@@ -119,10 +120,16 @@ export function RecipeEditor({
     };
   }, [lines, context.patientName, context.phone, context.doctorName, context.dateLabel]);
 
-  const products = useMemo(() => productsInCategory(category), [category]);
+  const products = useMemo(() => productsInCategory(category, brand), [category, brand]);
 
   const chooseCategory = (next: string) => {
     setCategory(next);
+    setProductName('');
+    setError('');
+  };
+
+  const chooseBrand = (next: string) => {
+    setBrand(next);
     setProductName('');
     setError('');
   };
@@ -166,13 +173,22 @@ export function RecipeEditor({
         <div className="text-sm font-semibold text-ink">Receta</div>
         <p className="text-xs text-slate-500">Opcional. El producto trae su uso y su recomendación. Se ajustan después de agregarlo.</p>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-3">
         <div>
           <label className="label">Categoría</label>
           <select className="input" value={category} onChange={(e) => chooseCategory(e.target.value)}>
             <option value="">Seleccionar…</option>
             {RECIPE_CATALOG.map((entry) => (
               <option key={entry.category} value={entry.category}>{entry.category}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label">Marca</label>
+          <select className="input" value={brand} onChange={(e) => chooseBrand(e.target.value)} aria-label="Marca">
+            <option value="">Todas</option>
+            {RECIPE_BRANDS.map((name) => (
+              <option key={name} value={name}>{name}</option>
             ))}
           </select>
         </div>

@@ -344,14 +344,14 @@ export function TodayPage() {
         <AttendanceEditModal
           attendance={editingAttendance}
           onClose={() => setEditingAttendance(null)}
-          onSaved={async (updated) => {
+          onSaved={async (updated, added) => {
             const gen = ++loadGen.current;
-            setData((prev) => (prev ? overlayAttendanceOnDay(prev, updated) : prev));
+            setData((prev) => (prev ? overlayAttendanceOnDay(prev, updated, added) : prev));
             setEditingAttendance(null);
             try {
               const res = await fetchDay();
               if (gen !== loadGen.current) return;
-              setData(overlayAttendanceOnDay(res, updated));
+              setData(overlayAttendanceOnDay(res, updated, added));
             } catch {
               /* keep the row already painted from the save */
             }

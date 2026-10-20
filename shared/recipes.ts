@@ -1,5 +1,6 @@
 export type RecipeProduct = {
   name: string;
+  brand?: string;
   usage: string;
   recommendation: string;
 };
@@ -8,6 +9,9 @@ export type RecipeCategory = {
   category: string;
   products: RecipeProduct[];
 };
+
+/** Marcas de la clínica. Se llena cuando entreguen el listado. */
+export const RECIPE_BRANDS: string[] = [];
 
 /** Catálogo provisional. Se sustituye cuando la clínica entregue productos, categoría, uso y recomendación. */
 export const RECIPE_CATALOG: RecipeCategory[] = [
@@ -53,8 +57,10 @@ export const RECIPE_CATALOG: RecipeCategory[] = [
   },
 ];
 
-export function productsInCategory(category: string): RecipeProduct[] {
-  return RECIPE_CATALOG.find((entry) => entry.category === category)?.products ?? [];
+export function productsInCategory(category: string, brand = ''): RecipeProduct[] {
+  const products = RECIPE_CATALOG.find((entry) => entry.category === category)?.products ?? [];
+  if (!brand) return products;
+  return products.filter((product) => product.brand === brand);
 }
 
 export function findRecipeProduct(category: string, name: string): RecipeProduct | undefined {

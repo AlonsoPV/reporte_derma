@@ -13,7 +13,7 @@ import {
   writeAudit,
 } from '../utils';
 import { z } from 'zod';
-import { attendSchema, walkInSchema, classifyAppointmentSchema, recipeLineSchema } from '../../shared/schemas';
+import { attendanceLineSchema, attendSchema, walkInSchema, classifyAppointmentSchema, recipeLineSchema } from '../../shared/schemas';
 import { canBypassClosedDay, canSeeAll } from '../../shared/constants';
 import { buildDayKpis } from '../../shared/match';
 import { toTime24h } from '../../shared/time';
@@ -581,13 +581,22 @@ async function updateAttendanceHandler(req: Request, res: Response) {
       await assertDayOpen(existing.doctorId, existing.attendanceDate);
     }
 
-    const { treatment, amount, notes, patientName, phone, email, actualTime, recipe } = req.body ?? {};
+    const { treatment, amount, notes, patientName, phone, email, actualTime, recipe, extraItems } = req.body ?? {};
 
     if (amount != null && amount !== '' && toNumber(amount) <= 0) {
       return res.status(400).json({ error: 'El monto debe ser mayor a 0' });
     }
     if (treatment != null && !String(treatment).trim()) {
       return res.status(400).json({ error: 'Tratamiento obligatorio' });
+    }
+
+    let extraLines: Array<{ treatment: string; amount: number; notes?: string }> = [];
+    if (extraItems !== undefined) {
+      const parsedExtra = z.array(attendanceLineSchema).max(20).safeParse(extraItems);
+      if (!parsedExtra.success) {
+        return res.status(400).json({ error: parsedExtra.error.errors[0]?.message ?? 'Procedimiento inválido' });
+      }
+      extraLines = parsedExtra.data;
     }
 
     let nextRecipe: Array<{ category: string; productName: string; usage: string; recommendation: string }> | undefined;
@@ -650,8 +659,35 @@ async function updateAttendanceHandler(req: Request, res: Response) {
             lookupPatientName: existing.patientName,
           });
 
+      const added = [];
+      for (const item of extraLines) {
+        added.push(await tx.attendance.create({
+          data: {
+            appointmentId: existing.appointmentId,
+            doctorId: existing.doctorId,
+            patientName: nextName,
+            phone: nextPhone,
+            email: nextEmail,
+            birthDate: existing.birthDate,
+            scheduledTime: existing.scheduledTime,
+            actualTime: nextTime,
+            treatment: item.treatment,
+            amount: item.amount,
+            paymentMethod: existing.paymentMethod,
+            notes: item.notes || null,
+            origin: existing.origin,
+            dataSource: 'MANUAL',
+            isDemo: existing.isDemo,
+            attendanceDate: existing.attendanceDate,
+            createdById: user.id,
+          },
+          include: { doctor: true },
+        }));
+      }
+
       return {
         attendance,
+        added,
         recipe: nextRecipe === undefined ? undefined : serializeRecipe(prescription?.items),
       };
     });
@@ -680,6 +716,7 @@ async function updateAttendanceHandler(req: Request, res: Response) {
           phone: updated.attendance.phone,
           actualTime: updated.attendance.actualTime,
           recipe: updated.recipe,
+          extraItems: extraLines,
         },
       });
     } catch (auditErr) {
@@ -692,6 +729,7 @@ async function updateAttendanceHandler(req: Request, res: Response) {
         amount: toNumber(updated.attendance.amount),
         ...(updated.recipe !== undefined ? { recipe: updated.recipe } : {}),
       },
+      added: updated.added.map((row) => ({ ...row, amount: toNumber(row.amount) })),
     });
   } catch (e) {
     const err = e as Error & { status?: number };

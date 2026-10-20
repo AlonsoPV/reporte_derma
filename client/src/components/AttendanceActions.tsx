@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api } from '../lib/api';
 import { formatDisplayDate } from '../lib/utils';
 import { money } from './KpiGrid';
+import { ExtraProcedureLines, type ProcedureLine } from './ProcedureLines';
 import { RecipeEditor, type RecipeLine } from './RecipeEditor';
 import { PROCEDURES } from '@shared/constants';
 import { toTime24h } from '@shared/time';
@@ -80,10 +81,16 @@ type DayWithAttendances = {
 export function overlayAttendanceOnDay<T extends DayWithAttendances>(
   data: T,
   updated: Partial<EditableAttendance> & { id: string },
+  extra: Array<Partial<EditableAttendance> & { id: string }> = [],
 ): T {
-  const attendances = mergeAttendanceRow(data.attendances, updated);
+  let attendances = mergeAttendanceRow(data.attendances, updated);
+  for (const row of extra) {
+    if (!attendances.some((item) => item.id === row.id)) {
+      attendances = [...attendances, { ...row, amount: Number(row.amount) } as T['attendances'][number]];
+    }
+  }
   const amount = attendances.reduce((sum, row) => sum + Number(row.amount), 0);
-  return { ...data, attendances, kpis: { ...data.kpis, amount } };
+  return { ...data, attendances, kpis: { ...data.kpis, attended: attendances.length, amount } };
 }
 
 export function removeAttendanceFromDay<T extends DayWithAttendances>(data: T, id: string): T {
@@ -103,7 +110,7 @@ export function AttendanceEditModal({
 }: {
   attendance: EditableAttendance;
   onClose: () => void;
-  onSaved: (updated: EditableAttendance) => void | Promise<void>;
+  onSaved: (updated: EditableAttendance, added?: EditableAttendance[]) => void | Promise<void>;
 }) {
   const [form, setForm] = useState({
     patientName: attendance.patientName,
@@ -114,6 +121,7 @@ export function AttendanceEditModal({
     amount: String(attendance.amount),
     notes: attendance.notes || '',
   });
+  const [extraLines, setExtraLines] = useState<ProcedureLine[]>([]);
   const [recipe, setRecipe] = useState<RecipeLine[]>(attendance.recipe || []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -145,6 +153,11 @@ export function AttendanceEditModal({
         treatment: form.treatment.trim(),
         amount: parsedAmount,
         notes: form.notes,
+        extraItems: extraLines.map((line) => ({
+          treatment: line.treatment,
+          amount: Number(line.amount),
+          notes: line.notes || undefined,
+        })),
         recipe: recipe.map(({ category, productName, usage, recommendation }) => ({
           category,
           productName,
@@ -153,16 +166,19 @@ export function AttendanceEditModal({
         })),
       };
       let saved: EditableAttendance = { ...attendance, ...body };
+      let added: EditableAttendance[] = [];
       try {
-        const res = await api.put<{ attendance: EditableAttendance }>(`/api/attendances/${attendance.id}`, body);
+        const res = await api.put<{ attendance: EditableAttendance; added?: EditableAttendance[] }>(`/api/attendances/${attendance.id}`, body);
         if (res?.attendance) saved = { ...saved, ...res.attendance, ...body, recipe: res.attendance.recipe ?? recipe };
+        added = res?.added || [];
       } catch (first) {
         const status = first instanceof Error && 'status' in first ? Number((first as Error & { status?: number }).status) : 0;
         if (status !== 404 && status !== 405) throw first;
-        const res = await api.patch<{ attendance: EditableAttendance }>(`/api/attendances/${attendance.id}`, body);
+        const res = await api.patch<{ attendance: EditableAttendance; added?: EditableAttendance[] }>(`/api/attendances/${attendance.id}`, body);
         if (res?.attendance) saved = { ...saved, ...res.attendance, ...body, recipe: res.attendance.recipe ?? recipe };
+        added = res?.added || [];
       }
-      await onSaved(saved);
+      await onSaved(saved, added);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al guardar');
     } finally {
@@ -179,7 +195,7 @@ export function AttendanceEditModal({
     >
       <div className="card flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden p-0 [&_.input]:text-base sm:[&_.input]:text-sm">
         <h2 className="font-display px-4 pt-5 text-2xl font-semibold sm:px-6 sm:pt-6">Editar atención</h2>
-        <p className="px-4 text-sm text-slate-500 sm:px-6">Puedes corregir el procedimiento, el monto y la receta.</p>
+        <p className="px-4 text-sm text-slate-500 sm:px-6">Puedes corregir este renglón, agregar otros procedimientos y la receta.</p>
         <div className="mt-4 min-h-0 flex-1 space-y-3 overflow-y-auto px-4 sm:px-6">
           <div>
             <label className="label">Paciente *</label>
@@ -218,6 +234,7 @@ export function AttendanceEditModal({
             <label className="label">Observaciones</label>
             <textarea className="input min-h-[80px]" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
           </div>
+          <ExtraProcedureLines lines={extraLines} onChange={setExtraLines} />
           <RecipeEditor
             lines={recipe}
             onChange={setRecipe}

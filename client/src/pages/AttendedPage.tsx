@@ -7,6 +7,7 @@ import { formatDisplayDate, resolveDatePreset } from '../lib/utils';
 import { toTime24h } from '@shared/time';
 import { canMutateAttendance, canSeeAll, isReadOnlyRole, ORIGIN_LABELS, PROCEDURES } from '@shared/constants';
 import { AttendanceDeleteModal, mergeAttendanceRow } from '../components/AttendanceActions';
+import { ExtraProcedureLines, type ProcedureLine } from '../components/ProcedureLines';
 import { RecipeEditor, type RecipeLine } from '../components/RecipeEditor';
 
 type Attendance = {
@@ -48,6 +49,7 @@ export function AttendedPage() {
     amount: '',
     notes: '',
   });
+  const [extraLines, setExtraLines] = useState<ProcedureLine[]>([]);
   const [recipe, setRecipe] = useState<RecipeLine[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -115,6 +117,7 @@ export function AttendedPage() {
       notes: r.notes || '',
     });
     setRecipe(r.recipe || []);
+    setExtraLines([]);
   };
 
   const save = async () => {
@@ -144,6 +147,11 @@ export function AttendedPage() {
         treatment: form.treatment.trim(),
         amount: parsedAmount,
         notes: form.notes,
+        extraItems: extraLines.map((line) => ({
+          treatment: line.treatment,
+          amount: Number(line.amount),
+          notes: line.notes || undefined,
+        })),
         recipe: recipe.map(({ category, productName, usage, recommendation }) => ({
           category,
           productName,
@@ -151,16 +159,22 @@ export function AttendedPage() {
           recommendation,
         })),
       };
+      let added: Attendance[] = [];
       try {
-        await api.put(`/api/attendances/${selected.id}`, body);
+        const res = await api.put<{ added?: Attendance[] }>(`/api/attendances/${selected.id}`, body);
+        added = res?.added || [];
       } catch (first) {
         const status = first instanceof Error && 'status' in first ? Number((first as Error & { status?: number }).status) : 0;
         if (status !== 404 && status !== 405) throw first;
-        await api.patch(`/api/attendances/${selected.id}`, body);
+        const res = await api.patch<{ added?: Attendance[] }>(`/api/attendances/${selected.id}`, body);
+        added = res?.added || [];
       }
       const saved = { id: selected.id, ...body, recipe };
       const gen = ++loadGen.current;
-      setRows((prev) => mergeAttendanceRow(prev, saved));
+      setRows((prev) => {
+        const merged = mergeAttendanceRow(prev, saved);
+        return [...merged, ...added.filter((row) => !merged.some((item) => item.id === row.id))];
+      });
       setSelected(null);
       setEditing(false);
       try {
@@ -366,6 +380,7 @@ export function AttendedPage() {
                   <label className="label">Observaciones</label>
                   <textarea className="input min-h-[80px]" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
                 </div>
+                <ExtraProcedureLines lines={extraLines} onChange={setExtraLines} />
                 <RecipeEditor
                   lines={recipe}
                   onChange={setRecipe}
