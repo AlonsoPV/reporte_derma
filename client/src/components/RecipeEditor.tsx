@@ -175,20 +175,20 @@ export function RecipeEditor({
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
         <div>
-          <label className="label">Categoría</label>
-          <select className="input" value={category} onChange={(e) => chooseCategory(e.target.value)}>
-            <option value="">Seleccionar…</option>
-            {RECIPE_CATALOG.map((entry) => (
-              <option key={entry.category} value={entry.category}>{entry.category}</option>
-            ))}
-          </select>
-        </div>
-        <div>
           <label className="label">Marca</label>
           <select className="input" value={brand} onChange={(e) => chooseBrand(e.target.value)} aria-label="Marca">
             <option value="">Todas</option>
             {RECIPE_BRANDS.map((name) => (
               <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label">Categoría</label>
+          <select className="input" value={category} onChange={(e) => chooseCategory(e.target.value)}>
+            <option value="">Seleccionar…</option>
+            {RECIPE_CATALOG.map((entry) => (
+              <option key={entry.category} value={entry.category}>{entry.category}</option>
             ))}
           </select>
         </div>
