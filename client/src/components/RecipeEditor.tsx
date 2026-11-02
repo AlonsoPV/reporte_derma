@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { RECIPE_BRANDS, RECIPE_CATALOG, findRecipeProduct, productsInCategory } from '@shared/recipes';
+import { RECIPE_BRANDS, categoriesForBrand, findRecipeProduct, searchRecipeProducts, type RecipeProduct } from '@shared/recipes';
 import { downloadRecipePdf, recipePdfFile, shareRecipeFile, shareRecipePdf } from '../lib/recipePdf';
 
 export type RecipeLine = {
@@ -97,7 +97,12 @@ export function RecipeEditor({
   const [category, setCategory] = useState('');
   const [brand, setBrand] = useState('');
   const [productName, setProductName] = useState('');
+  const [productQuery, setProductQuery] = useState('');
+  const [productOpen, setProductOpen] = useState(false);
+  const [activeMatch, setActiveMatch] = useState(0);
   const [error, setError] = useState('');
+  const productBox = useRef<HTMLDivElement>(null);
+  const productInput = useRef<HTMLInputElement>(null);
   const [shareNote, setShareNote] = useState('');
   const [sharing, setSharing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -120,22 +125,37 @@ export function RecipeEditor({
     };
   }, [lines, context.patientName, context.phone, context.doctorName, context.dateLabel]);
 
-  const products = useMemo(() => productsInCategory(category, brand), [category, brand]);
+  const matches = useMemo(() => searchRecipeProducts(productQuery, brand, category, 12), [productQuery, brand, category]);
+  const brandCategories = useMemo(() => categoriesForBrand(brand), [brand]);
+  const usedNames = useMemo(() => new Set(lines.map((line) => line.productName)), [lines]);
+
+  useEffect(() => {
+    const close = (event: MouseEvent) => {
+      if (!productBox.current?.contains(event.target as Node)) setProductOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
+
+  useEffect(() => {
+    setActiveMatch(0);
+  }, [productQuery, brand, category]);
 
   const chooseCategory = (next: string) => {
     setCategory(next);
     setProductName('');
+    setProductQuery('');
+    setProductOpen(true);
     setError('');
   };
 
   const chooseBrand = (next: string) => {
     setBrand(next);
+    const nextCategories = categoriesForBrand(next);
+    if (category && !nextCategories.includes(category)) setCategory('');
     setProductName('');
-    setError('');
-  };
-
-  const chooseProduct = (next: string) => {
-    setProductName(next);
+    setProductQuery('');
+    setProductOpen(true);
     setError('');
   };
 
@@ -143,13 +163,12 @@ export function RecipeEditor({
     onChange(lines.map((line) => (line.id === id ? { ...line, ...patch } : line)));
   };
 
-  const add = () => {
-    const product = findRecipeProduct(category, productName);
-    if (!category || !product) {
-      setError('Elige categoría y producto.');
-      return;
-    }
-    if (lines.some((line) => line.category === category && line.productName === product.name)) {
+  const focusSearch = () => {
+    window.setTimeout(() => productInput.current?.focus(), 0);
+  };
+
+  const addProduct = (product: RecipeProduct) => {
+    if (usedNames.has(product.name)) {
       setError('Ese producto ya está en la receta.');
       return;
     }
@@ -157,23 +176,37 @@ export function RecipeEditor({
       ...lines,
       {
         id: crypto.randomUUID(),
-        category,
+        category: product.category ?? '',
         productName: product.name,
         usage: product.usage,
         recommendation: product.recommendation,
       },
     ]);
     setProductName('');
+    setProductQuery('');
+    setProductOpen(false);
     setError('');
+    focusSearch();
+  };
+
+  const addFromSearch = () => {
+    const product = findRecipeProduct(productName)
+      ?? matches.items[activeMatch]
+      ?? (matches.total === 1 ? matches.items[0] : undefined);
+    if (!product) {
+      setError(productQuery.trim() || brand || category ? 'Elige un producto de la lista.' : 'Escribe el producto y elige uno de la lista.');
+      return;
+    }
+    addProduct(product);
   };
 
   return (
     <div className="space-y-3 rounded-2xl border border-slate-200 p-3">
       <div>
         <div className="text-sm font-semibold text-ink">Receta</div>
-        <p className="text-xs text-slate-500">Opcional. El producto trae su uso y su recomendación. Se ajustan después de agregarlo.</p>
+        <p className="text-xs text-slate-500">Opcional. Escribe parte del nombre y elige; se agrega al tocarlo. Uso y recomendación se ajustan después.</p>
       </div>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className={`grid gap-3 ${brandCategories.length ? 'sm:grid-cols-2' : ''}`}>
         <div>
           <label className="label">Marca</label>
           <select className="input" value={brand} onChange={(e) => chooseBrand(e.target.value)} aria-label="Marca">
@@ -183,27 +216,93 @@ export function RecipeEditor({
             ))}
           </select>
         </div>
-        <div>
-          <label className="label">Categoría</label>
-          <select className="input" value={category} onChange={(e) => chooseCategory(e.target.value)}>
-            <option value="">Seleccionar…</option>
-            {RECIPE_CATALOG.map((entry) => (
-              <option key={entry.category} value={entry.category}>{entry.category}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="label">Producto</label>
-          <select className="input" value={productName} onChange={(e) => chooseProduct(e.target.value)} disabled={!category}>
-            <option value="">Seleccionar…</option>
-            {products.map((product) => (
-              <option key={product.name} value={product.name}>{product.name}</option>
-            ))}
-          </select>
-        </div>
+        {brandCategories.length > 0 && (
+          <div>
+            <label className="label">Categoría</label>
+            <select className="input" value={category} onChange={(e) => chooseCategory(e.target.value)}>
+              <option value="">Todas</option>
+              {brandCategories.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+      <div ref={productBox} className="relative">
+        <label className="label">Producto</label>
+        <input
+          ref={productInput}
+          className="input text-base sm:text-sm"
+          value={productQuery}
+          placeholder="Buscar producto…"
+          autoComplete="off"
+          aria-label="Buscar producto"
+          aria-expanded={productOpen}
+          aria-controls="recipe-product-list"
+          onFocus={() => setProductOpen(true)}
+          onClick={() => setProductOpen(true)}
+          onChange={(e) => {
+            setProductQuery(e.target.value);
+            setProductName('');
+            setProductOpen(true);
+            setError('');
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              setProductOpen(true);
+              setActiveMatch((index) => Math.min(index + 1, Math.max(matches.items.length - 1, 0)));
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              setActiveMatch((index) => Math.max(index - 1, 0));
+            } else if (e.key === 'Enter') {
+              e.preventDefault();
+              addFromSearch();
+            } else if (e.key === 'Escape') {
+              setProductOpen(false);
+            }
+          }}
+        />
+        {productOpen && (
+          <div id="recipe-product-list" role="listbox" className="mt-1 max-h-56 w-full overflow-auto rounded-xl border border-slate-200 bg-white shadow-soft">
+            {matches.items.length === 0 ? (
+              <div className="px-3 py-2 text-sm text-slate-500">
+                {productQuery.trim() || brand || category ? 'Sin coincidencias.' : 'Escribe para buscar en el catálogo.'}
+              </div>
+            ) : (
+              <>
+                {matches.items.map((product, index) => {
+                  const used = usedNames.has(product.name);
+                  return (
+                    <button
+                      key={product.name}
+                      id={`recipe-product-option-${index}`}
+                      type="button"
+                      role="option"
+                      aria-selected={index === activeMatch}
+                      className={`block w-full px-3 py-2 text-left text-sm ${index === activeMatch ? 'bg-brand-50' : 'hover:bg-slate-50'} ${used ? 'opacity-55' : ''}`}
+                      onMouseEnter={() => setActiveMatch(index)}
+                      onClick={() => addProduct(product)}
+                    >
+                      <span className="block font-medium leading-5">{product.name}</span>
+                      <span className="block text-xs text-slate-500">
+                        {[product.brand, product.category, used ? 'Ya en la receta' : ''].filter(Boolean).join(' · ')}
+                      </span>
+                    </button>
+                  );
+                })}
+                {matches.total > matches.items.length && (
+                  <div className="border-t border-slate-100 px-3 py-2 text-xs text-slate-500">
+                    {matches.items.length} de {matches.total}. Sigue escribiendo para acotar.
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
       </div>
       {error && <div className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>}
-      <button type="button" className="btn-secondary w-full" onClick={add}>
+      <button type="button" className="btn-secondary w-full" onClick={addFromSearch}>
         Agregar a la receta
       </button>
 
@@ -220,12 +319,16 @@ export function RecipeEditor({
           <div className="divide-y divide-slate-100">
             {lines.map((line) => {
               const editing = editingId === line.id;
+              const catalog = findRecipeProduct(line.productName);
+              const sameText = line.usage.trim() === line.recommendation.trim();
               return (
                 <div key={line.id} className="px-3 py-3">
                   <div className="flex items-start gap-2">
                     <div className="min-w-0 flex-1">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{line.category}</div>
-                      <div className="truncate font-semibold leading-5">{line.productName}</div>
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        {line.category || catalog?.brand || 'Producto'}
+                      </div>
+                      <div className="font-semibold leading-5">{line.productName}</div>
                     </div>
                     <button
                       type="button"
@@ -266,8 +369,14 @@ export function RecipeEditor({
                     </div>
                   ) : (
                     <div className="mt-1 space-y-1 text-sm leading-5 text-slate-700">
-                      <p><span className="font-semibold">Uso.</span> {line.usage}</p>
-                      <p>{line.recommendation}</p>
+                      {sameText ? (
+                        <p>{line.usage}</p>
+                      ) : (
+                        <>
+                          <p><span className="font-semibold">Uso.</span> {line.usage}</p>
+                          <p>{line.recommendation}</p>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>

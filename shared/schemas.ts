@@ -9,12 +9,12 @@ export const attendanceLineSchema = z.object({
 });
 
 export const recipeLineSchema = z.object({
-  category: z.string().min(1, 'Selecciona una categoría'),
+  category: z.string(),
   productName: z.string().min(1, 'Selecciona un producto'),
   usage: z.string().trim().min(1, 'La forma de uso es obligatoria').max(500),
   recommendation: z.string().trim().min(1, 'La recomendación es obligatoria').max(800),
 }).superRefine((line, ctx) => {
-  if (!findRecipeProduct(line.category, line.productName)) {
+  if (!findRecipeProduct(line.productName)) {
     ctx.addIssue({ code: 'custom', message: 'Selecciona un producto de la lista', path: ['productName'] });
   }
 });
