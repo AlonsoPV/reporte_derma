@@ -8,6 +8,12 @@ import { writeAudit } from '../utils';
 import { CLEANUP_CONFIRMATION, PATIENT_CLEANUP_CONFIRMATION, cleanupDemoData } from '../services/demo-cleanup';
 
 const router = Router();
+
+function publicUser<T extends { passwordHash?: string }>(user: T) {
+  const { passwordHash: _passwordHash, ...safe } = user;
+  return safe;
+}
+
 const cleanupSelection = z.object({
   patientsOnly: z.boolean().default(false),
   confirmedAttendanceIds: z.array(z.string().min(1)).max(100).default([]),
@@ -82,7 +88,7 @@ router.post('/users', async (req, res) => {
       data: {
         name: parsed.data.name,
         email: parsed.data.email.toLowerCase(),
-        passwordHash: await bcrypt.hash(parsed.data.password, 10),
+        passwordHash: await bcrypt.hash(parsed.data.password, 12),
         role: parsed.data.role,
         status: parsed.data.status ?? 'ACTIVE',
         doctorId: parsed.data.doctorId || null,
@@ -98,7 +104,7 @@ router.post('/users', async (req, res) => {
       newValue: { email: created.email, role: created.role },
     });
 
-    res.json({ user: created });
+    res.json({ user: publicUser(created) });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Error al crear usuario' });
@@ -122,7 +128,7 @@ router.patch('/users/:id', async (req, res) => {
     if (parsed.data.role) data.role = parsed.data.role;
     if (parsed.data.status) data.status = parsed.data.status;
     if (parsed.data.doctorId !== undefined) data.doctorId = parsed.data.doctorId || null;
-    if (parsed.data.password) data.passwordHash = await bcrypt.hash(parsed.data.password, 10);
+    if (parsed.data.password) data.passwordHash = await bcrypt.hash(parsed.data.password, 12);
 
     const updated = await prisma.user.update({
       where: { id: existing.id },
@@ -139,7 +145,7 @@ router.patch('/users/:id', async (req, res) => {
       newValue: { email: updated.email, role: updated.role, status: updated.status },
     });
 
-    res.json({ user: updated });
+    res.json({ user: publicUser(updated) });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Error al actualizar usuario' });
@@ -148,7 +154,10 @@ router.patch('/users/:id', async (req, res) => {
 
 router.get('/doctors', async (_req, res) => {
   const doctors = await prisma.doctor.findMany({
-    include: { user: true, nameMappings: true },
+    include: {
+      user: { select: { id: true, name: true, email: true, role: true, status: true, doctorId: true } },
+      nameMappings: true,
+    },
     orderBy: { name: 'asc' },
   });
   res.json({ doctors });
@@ -242,7 +251,7 @@ router.get('/audit', async (req, res) => {
   const logs = await prisma.auditLog.findMany({
     include: { user: { select: { id: true, name: true, email: true } } },
     orderBy: { timestamp: 'desc' },
-    take: Number(req.query.limit) || 200,
+    take: Math.min(Math.max(Number(req.query.limit) || 200, 1), 200),
   });
   res.json({ logs });
 });

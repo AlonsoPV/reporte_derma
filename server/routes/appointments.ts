@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { ensurePrescriptionTables, prisma } from '../db';
+import { withRlsTransaction } from '../rls';
 import { requireAuth, getUser } from '../middleware/auth';
 import {
   assertDoctorAccess,
@@ -303,7 +304,7 @@ router.post('/attend', requireAuth, async (req, res) => {
     await assertDayOpen(appointment.doctorId, appointment.appointmentDate);
     if (data.recipe?.length) await ensurePrescriptionTables();
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await withRlsTransaction(prisma, async (tx) => {
       const attendances = [];
       for (const item of data.items) {
         attendances.push(await tx.attendance.create({
@@ -397,7 +398,7 @@ router.post('/walk-in', requireAuth, async (req, res) => {
     await assertDayOpen(doctorId, date);
     if (data.recipe?.length) await ensurePrescriptionTables();
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await withRlsTransaction(prisma, async (tx) => {
       const attendances = [];
       for (const item of data.items) {
         attendances.push(await tx.attendance.create({
@@ -616,7 +617,7 @@ async function updateAttendanceHandler(req: Request, res: Response) {
     const nextPhone = phone !== undefined ? phone || null : existing.phone;
     const nextEmail = email !== undefined ? email || null : existing.email;
 
-    const updated = await prisma.$transaction(async (tx) => {
+    const updated = await withRlsTransaction(prisma, async (tx) => {
       const attendance = await tx.attendance.update({
         where: { id: existing.id },
         data: {
@@ -753,7 +754,7 @@ router.delete('/attendances/:id', requireAuth, async (req, res) => {
     }
     await ensurePrescriptionTables();
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await withRlsTransaction(prisma, async (tx) => {
       await tx.attendance.delete({ where: { id: existing.id } });
       let restoredAppointment = false;
       if (existing.appointmentId) {

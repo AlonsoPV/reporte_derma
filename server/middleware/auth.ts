@@ -1,11 +1,48 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { SessionUser } from '../../shared/types';
 import { isReadOnlyRole } from '../../shared/constants';
+import { enterRlsContext, rlsContextFromUser } from '../rls';
 
 declare module 'express-session' {
   interface SessionData {
     user?: SessionUser;
   }
+}
+
+export function rlsContextMiddleware(req: Request, _res: Response, next: NextFunction) {
+  enterRlsContext(rlsContextFromUser(req.session?.user));
+  next();
+}
+
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+
+export function loginKey(req: Request, identity: string) {
+  return `${req.ip || 'unknown'}|${identity.toLowerCase()}`;
+}
+
+export function assertLoginAllowed(key: string) {
+  const now = Date.now();
+  const current = loginAttempts.get(key);
+  if (!current || current.resetAt < now) {
+    loginAttempts.set(key, { count: 0, resetAt: now + 15 * 60 * 1000 });
+    return;
+  }
+  if (current.count >= 8) {
+    const err = new Error('Demasiados intentos. Espera 15 minutos.');
+    (err as Error & { status: number }).status = 429;
+    throw err;
+  }
+}
+
+export function recordLoginFailure(key: string) {
+  const now = Date.now();
+  const current = loginAttempts.get(key) || { count: 0, resetAt: now + 15 * 60 * 1000 };
+  current.count += 1;
+  loginAttempts.set(key, current);
+}
+
+export function clearLoginFailures(key: string) {
+  loginAttempts.delete(key);
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {

@@ -1,4 +1,5 @@
 import { prisma } from '../db';
+import { withRlsTransaction } from '../rls';
 
 export const DEMO_DATE = '2026-10-08';
 const date = new Date('2026-10-08T00:00:00.000Z');
@@ -20,7 +21,7 @@ function conflict(message: string): never {
 
 /** Fixed, additive fixture. No updates, deletes, schema changes, or startup seeding. */
 export async function seedDemoDay(actorId?: string, database = prisma) {
-  return database.$transaction(async (tx) => {
+  return withRlsTransaction(database, async (tx) => {
     // Serialize repeated admin clicks, including requests on different app instances.
     await tx.$queryRaw`SELECT true AS locked FROM pg_advisory_xact_lock(hashtext(${'dermaops-demo-' + DEMO_DATE}))`;
     if (actorId) {

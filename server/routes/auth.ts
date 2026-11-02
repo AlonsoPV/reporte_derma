@@ -1,16 +1,35 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../db';
 import { loginSchema } from '../../shared/schemas';
-import { requireAuth, getUser } from '../middleware/auth';
+import {
+  requireAuth,
+  getUser,
+  loginKey,
+  assertLoginAllowed,
+  recordLoginFailure,
+  clearLoginFailures,
+} from '../middleware/auth';
 import { writeAudit } from '../utils';
+import { runWithAuthScope } from '../rls';
 import type { SessionUser } from '../../shared/types';
 
 const router = Router();
+const DUMMY_HASH = '$2b$10$PKYqyr.mQy/fN.Uznsg8kewq4lEPyL3.VO4fNTotB9/7uA2K/DHtK';
+
+function saveSession(req: Request, user: SessionUser) {
+  return new Promise<void>((resolve, reject) => {
+    req.session.regenerate((regenErr) => {
+      if (regenErr) return reject(regenErr);
+      req.session.user = user;
+      req.session.save((saveErr) => (saveErr ? reject(saveErr) : resolve()));
+    });
+  });
+}
 
 router.get('/doctors', async (_req, res) => {
   try {
-    const doctors = await prisma.doctor.findMany({
+    const doctors = await runWithAuthScope(() => prisma.doctor.findMany({
       where: {
         active: true,
         user: { is: { status: 'ACTIVE', role: 'DOCTOR' } },
@@ -20,7 +39,7 @@ router.get('/doctors', async (_req, res) => {
         name: true,
       },
       orderBy: { name: 'asc' },
-    });
+    }));
     res.json({ doctors });
   } catch (e) {
     console.error(e);
@@ -36,8 +55,12 @@ router.post('/login', async (req, res) => {
     }
 
     const { email, doctorId, password } = parsed.data;
-    const user = doctorId
-      ? await prisma.user.findFirst({
+    const identity = doctorId || email || '';
+    const key = loginKey(req, identity);
+    assertLoginAllowed(key);
+
+    const user = await runWithAuthScope(() => (doctorId
+      ? prisma.user.findFirst({
           where: {
             doctorId,
             role: 'DOCTOR',
@@ -46,21 +69,19 @@ router.post('/login', async (req, res) => {
           },
           include: { doctor: true },
         })
-      : await prisma.user.findUnique({
-          where: { email: email!.toLowerCase() },
+      : prisma.user.findFirst({
+          where: { email: email!.toLowerCase(), status: 'ACTIVE' },
           include: { doctor: true },
-        });
+        })));
 
-    if (!user || user.status !== 'ACTIVE') {
+    const ok = await bcrypt.compare(password, user?.passwordHash || DUMMY_HASH);
+    if (!user || !ok) {
+      recordLoginFailure(key);
       return res.status(401).json({ error: 'Credenciales incorrectas' });
     }
 
     if (doctorId && user.role !== 'DOCTOR') {
-      return res.status(401).json({ error: 'Credenciales incorrectas' });
-    }
-
-    const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok) {
+      recordLoginFailure(key);
       return res.status(401).json({ error: 'Credenciales incorrectas' });
     }
 
@@ -75,17 +96,20 @@ router.post('/login', async (req, res) => {
       role: user.role,
       doctorId: user.doctorId,
     };
-    req.session.user = sessionUser;
+    await saveSession(req, sessionUser);
+    clearLoginFailures(key);
 
-    await writeAudit({
+    await runWithAuthScope(() => writeAudit({
       userId: user.id,
       action: 'LOGIN',
       entityType: 'user',
       entityId: user.id,
-    });
+    }));
 
     return res.json({ user: sessionUser });
   } catch (e) {
+    const status = (e as Error & { status?: number }).status;
+    if (status === 429) return res.status(429).json({ error: (e as Error).message });
     console.error(e);
     return res.status(500).json({ error: 'Error al iniciar sesión' });
   }
@@ -93,12 +117,16 @@ router.post('/login', async (req, res) => {
 
 router.post('/logout', requireAuth, async (req, res) => {
   const user = getUser(req);
-  await writeAudit({
-    userId: user.id,
-    action: 'LOGOUT',
-    entityType: 'user',
-    entityId: user.id,
-  });
+  try {
+    await writeAudit({
+      userId: user.id,
+      action: 'LOGOUT',
+      entityType: 'user',
+      entityId: user.id,
+    });
+  } catch (e) {
+    console.error(e);
+  }
   req.session.destroy(() => {
     res.clearCookie('dermaops.sid');
     res.json({ ok: true });

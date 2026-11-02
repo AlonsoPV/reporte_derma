@@ -1,4 +1,5 @@
 import { prisma } from '../db';
+import { withRlsTransaction } from '../rls';
 import type { Prisma } from '@prisma/client';
 import { RETAINED_CLINIC_DOCTORS } from '../../shared/constants';
 
@@ -13,7 +14,7 @@ export type DemoCleanupOptions = {
 
 /** Recompute the deletion plan inside the same transaction that applies it. */
 export async function cleanupDemoData(actorId: string, apply = false, database = prisma, options: DemoCleanupOptions = {}) {
-  return database.$transaction(async (tx) => {
+  return withRlsTransaction(database, async (tx) => {
     await tx.$queryRaw`SELECT true AS locked FROM pg_advisory_xact_lock(hashtext(${'dermaops-demo-2026-10-08'}))`;
     const actor = await tx.user.findUnique({ where: { id: actorId } });
     if (!actor || actor.role !== 'ADMIN' || actor.status !== 'ACTIVE') {

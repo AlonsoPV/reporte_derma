@@ -112,6 +112,7 @@ export function publicError(e: unknown, fallback: string) {
   if (err.code === 'P2021' || /does not exist in the current database/i.test(err.message || '') || /Invalid `prisma\./.test(err.message || '')) {
     return fallback;
   }
+  if (process.env.NODE_ENV === 'production') return fallback;
   return err.message || fallback;
 }
 
