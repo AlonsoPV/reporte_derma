@@ -20,3 +20,9 @@ In Replit's SQL console, select all statements and execute them together; the co
 **Why:** Explicit transaction commands produced the console's instruction to select multiple statements for automatic transaction batching; the official SQL-console documentation confirms this behavior.
 
 **How to apply:** Write console instructions for a single selected batch without outer transaction commands, distinguishing them from procedural blocks.
+
+Verify manual GRANT operations with `has_table_privilege` before suggesting publishing; a report that the console finished is not evidence that every statement ran.
+
+**Why:** Table permissions remained absent after a multi-statement attempt; executing the GRANT as the only editor statement and checking its result confirmed the permissions.
+
+**How to apply:** If a batch did not establish permissions, isolate the grant into one statement and verify separately instead of repeating the same batch.
