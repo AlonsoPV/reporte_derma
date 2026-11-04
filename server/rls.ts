@@ -274,12 +274,38 @@ export async function currentRoleFlags(admin: PrismaClient) {
   const rows = await admin.$queryRaw<Array<{ rolsuper: boolean; rolbypassrls: boolean; rolname: string }>>`
     SELECT rolsuper, rolbypassrls, rolname FROM pg_roles WHERE rolname = current_user
   `;
-  return rows[0] ?? { rolsuper: false, rolbypassrls: false, rolname: 'unknown' };
+  if (!rows[0]) throw new Error('No se pudieron verificar los permisos del rol de base de datos.');
+  return rows[0];
+}
+
+export async function verifyAppDatabaseRole(admin: PrismaClient) {
+  const rows = await admin.$queryRaw<
+    Array<{ rolsuper: boolean; rolbypassrls: boolean; rolcanlogin: boolean; rolname: string }>
+  >`
+    SELECT rolsuper, rolbypassrls, rolcanlogin, rolname
+    FROM pg_roles WHERE rolname = ${'dermaops_app'}
+  `;
+  const role = rows[0];
+  if (!role) {
+    throw new Error(
+      'Falta el rol dermaops_app en la base de datos. Publishing no copia roles personalizados. ' +
+        'Completa docs/production-rls.md antes de publicar; no se usará una conexión con BYPASSRLS.',
+    );
+  }
+  if (role.rolsuper || role.rolbypassrls || !role.rolcanlogin) {
+    throw new Error('dermaops_app debe tener LOGIN, NOSUPERUSER y NOBYPASSRLS. No se inició.');
+  }
 }
 
 export async function ensureAppDatabaseRole(admin: PrismaClient, password: string) {
+  // Production roles are provisioned separately, never through startup DDL.
+  // Availability is independent of whether this process created the role.
+  if (process.env.NODE_ENV === 'production') {
+    await verifyAppDatabaseRole(admin);
+    return { available: true };
+  }
   const flags = await currentRoleFlags(admin);
-  if (!flags.rolsuper) return { created: false, superuser: false };
+  if (!flags.rolsuper) return { available: false };
   await admin.$executeRawUnsafe(`
     DO $do$
     BEGIN
@@ -313,7 +339,8 @@ export async function ensureAppDatabaseRole(admin: PrismaClient, password: strin
     END
     $do$;
   `);
-  return { created: true, superuser: true };
+  await verifyAppDatabaseRole(admin);
+  return { available: true };
 }
 
 export async function ensureRowLevelSecurity(admin: PrismaClient) {
@@ -335,4 +362,22 @@ export async function ensureRowLevelSecurity(admin: PrismaClient) {
   await admin.$executeRawUnsafe('GRANT EXECUTE ON FUNCTION app_is_clinic_wide() TO PUBLIC');
   await admin.$executeRawUnsafe('GRANT EXECUTE ON FUNCTION app_is_writer() TO PUBLIC');
   await admin.$executeRawUnsafe('GRANT EXECUTE ON FUNCTION app_can_see_doctor(text) TO PUBLIC');
+}
+
+/** Verify production protection without changing the live schema. */
+export async function verifyRowLevelSecurity(admin: PrismaClient) {
+  const rows = await admin.$queryRaw<
+    Array<{ relname: string; relrowsecurity: boolean; relforcerowsecurity: boolean; has_policy: boolean }>
+  >`
+    SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity,
+      EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = c.oid) AS has_policy
+    FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND c.relname = ANY(${[...POLICY_TABLES]}::text[])
+  `;
+  for (const table of POLICY_TABLES) {
+    const row = rows.find((candidate) => candidate.relname === table);
+    if (!row?.relrowsecurity || !row.relforcerowsecurity || !row.has_policy) {
+      throw new Error(`RLS no está preparada en la tabla ${table}. No se inició.`);
+    }
+  }
 }

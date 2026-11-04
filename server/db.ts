@@ -6,6 +6,7 @@ import {
   currentRoleFlags,
   ensureAppDatabaseRole,
   ensureRowLevelSecurity,
+  verifyRowLevelSecurity,
   withRlsExtension,
 } from './rls';
 
@@ -16,7 +17,7 @@ const globalForPrisma = globalThis as unknown as {
   prisma?: ReturnType<typeof withRlsExtension>;
 };
 
-const adminUrl = process.env.DATABASE_URL;
+const adminUrl = process.env.DATABASE_URL || '';
 if (!adminUrl) {
   throw new Error('DATABASE_URL is required');
 }
@@ -103,16 +104,34 @@ export async function ensurePrescriptionTables() {
 export async function connectAppDatabase() {
   const password = appRolePassword();
   const role = await ensureAppDatabaseRole(prismaAdmin, password);
-  await ensureRowLevelSecurity(prismaAdmin);
+  if (process.env.NODE_ENV === 'production') await verifyRowLevelSecurity(prismaAdmin);
+  else await ensureRowLevelSecurity(prismaAdmin);
   const flags = await currentRoleFlags(prismaAdmin);
-  const useAppRole = role.created;
+  const useAppRole = role.available;
   const url = useAppRole ? appDatabaseUrl(adminUrl, password) : adminUrl;
   if (useAppRole) {
     const previous = prisma;
     const next = createAppClient(url);
+    try {
+      await next.$connect();
+      const connectedRole = await currentRoleFlags(next as unknown as PrismaClient);
+      if (
+        connectedRole.rolname !== 'dermaops_app' ||
+        connectedRole.rolsuper ||
+        connectedRole.rolbypassrls
+      ) {
+        throw new Error('La conexión de aplicación no aplica RLS. No se inició.');
+      }
+    } catch {
+      await next.$disconnect().catch(() => undefined);
+      // Do not expose connection strings or credentials from driver errors.
+      throw new Error(
+        'No se pudo validar la conexión restringida dermaops_app. ' +
+          'Revisa su contraseña, RLS_DB_PASSWORD y los permisos indicados en docs/production-rls.md.',
+      );
+    }
     prisma = next;
     if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = next;
-    await prisma.$connect();
     if (previous !== next) await previous.$disconnect().catch(() => undefined);
   }
   if (process.env.NODE_ENV === 'production' && (flags.rolsuper || flags.rolbypassrls) && !useAppRole) {
