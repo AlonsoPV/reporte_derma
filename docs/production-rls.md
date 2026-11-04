@@ -21,9 +21,11 @@ build. No copies la base de desarrollo ni reemplaces datos de producción.
    el marcador por esa misma contraseña solo dentro de la consola privada.
    Escapa una comilla simple de la contraseña como dos comillas simples.
    No ejecutes este bloque si el rol ya existe: revisa primero su configuración.
+   Selecciona todas las instrucciones del bloque y pulsa Run una sola vez:
+   la consola las envuelve automáticamente en una transacción. No añadas
+   instrucciones independientes `BEGIN;`, `COMMIT;` ni `ROLLBACK;`.
 
 ```sql
-BEGIN;
 CREATE ROLE dermaops_app
   LOGIN PASSWORD '<MISMA CONTRASEÑA GUARDADA EN RLS_DB_PASSWORD>'
   NOSUPERUSER NOINHERIT NOCREATEDB NOCREATEROLE NOBYPASSRLS;
@@ -49,10 +51,12 @@ GRANT EXECUTE ON FUNCTION
   public.app_can_see_doctor(text)
 TO dermaops_app;
 REVOKE ALL ON TABLE public.session FROM dermaops_app;
-COMMIT;
 ```
 
-Si hay un error, ejecuta `ROLLBACK` y no publiques hasta resolverlo. Este bloque
+El `BEGIN` dentro de `DO $$ ... $$` pertenece al bloque de PostgreSQL:
+conserva ese bloque completo, incluido su `BEGIN` y su `END`.
+
+Si hay un error en el lote, no publiques hasta resolverlo. Este bloque
 no cambia registros clínicos ni desactiva RLS; crea un usuario y concede permisos
 sujetos a las políticas existentes. La tabla de sesiones sigue reservada a la
 conexión administrativa.

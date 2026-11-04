@@ -14,3 +14,9 @@ Provision the production application role explicitly through the owner's private
 **Why:** Managed publishing does not transfer role objects or grants, while production database access available to the agent is read-only. Accepting the owner's BYPASSRLS connection would invalidate clinical data isolation.
 
 **How to apply:** Keep manual role preparation separate from code publishing and clearly report that a verified development startup does not establish that production provisioning has been completed.
+
+In Replit's SQL console, select all statements and execute them together; the console wraps the selection in a transaction. Do not instruct the user to run standalone BEGIN, COMMIT, or ROLLBACK. Preserve procedural BEGIN/END inside DO blocks.
+
+**Why:** Explicit transaction commands produced the console's instruction to select multiple statements for automatic transaction batching; the official SQL-console documentation confirms this behavior.
+
+**How to apply:** Write console instructions for a single selected batch without outer transaction commands, distinguishing them from procedural blocks.
