@@ -27,10 +27,17 @@ export const prismaAdmin =
     log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
   });
 
+function withConnectionLimit(url: string) {
+  const parsed = new URL(url);
+  // Single connection so session-level set_config for RLS cannot leak across pooled clients.
+  parsed.searchParams.set('connection_limit', '1');
+  return parsed.toString();
+}
+
 function createAppClient(url: string) {
   return withRlsExtension(
     new PrismaClient({
-      datasources: { db: { url } },
+      datasources: { db: { url: withConnectionLimit(url) } },
       log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
     }),
   );
@@ -40,6 +47,7 @@ export let prisma = globalForPrisma.prisma ?? createAppClient(adminUrl);
 
 if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prismaAdmin = prismaAdmin;
+  globalForPrisma.prisma = prisma;
 }
 
 /** One appointment can have several attendance rows. Older DBs still have the unique index. */

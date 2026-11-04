@@ -1,6 +1,6 @@
 import { Router, type Request } from 'express';
 import bcrypt from 'bcryptjs';
-import { prisma } from '../db';
+import { prismaAdmin } from '../db';
 import { loginSchema } from '../../shared/schemas';
 import {
   requireAuth,
@@ -9,6 +9,7 @@ import {
   assertLoginAllowed,
   recordLoginFailure,
   clearLoginFailures,
+  clearSessionCookie,
 } from '../middleware/auth';
 import { writeAudit } from '../utils';
 import { runWithAuthScope } from '../rls';
@@ -27,19 +28,38 @@ function saveSession(req: Request, user: SessionUser) {
   });
 }
 
+async function withAdminRls<T>(fn: (tx: typeof prismaAdmin) => Promise<T>) {
+  return prismaAdmin.$transaction(async (tx) => {
+    await tx.$executeRaw`
+      SELECT
+        set_config('app.role', 'ADMIN', true),
+        set_config('app.doctor_id', '', true),
+        set_config('app.user_id', 'system', true),
+        set_config('app.scope', 'app', true),
+        set_config('app.auth_email', '', true),
+        set_config('app.auth_doctor_id', '', true)
+    `;
+    return fn(tx as unknown as typeof prismaAdmin);
+  });
+}
+
 router.get('/doctors', async (_req, res) => {
   try {
-    const doctors = await runWithAuthScope(() => prisma.doctor.findMany({
-      where: {
-        active: true,
-        user: { is: { status: 'ACTIVE', role: 'DOCTOR' } },
-      },
-      select: {
-        id: true,
-        name: true,
-      },
-      orderBy: { name: 'asc' },
-    }));
+    // Public login directory (id/name only). Uses admin DB tx so the join to users
+    // is not blocked by the narrowed anonymous/auth RLS scope.
+    const doctors = await withAdminRls((tx) =>
+      tx.doctor.findMany({
+        where: {
+          active: true,
+          user: { is: { status: 'ACTIVE', role: 'DOCTOR' } },
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+        orderBy: { name: 'asc' },
+      }),
+    );
     res.json({ doctors });
   } catch (e) {
     console.error(e);
@@ -59,20 +79,31 @@ router.post('/login', async (req, res) => {
     const key = loginKey(req, identity);
     assertLoginAllowed(key);
 
-    const user = await runWithAuthScope(() => (doctorId
-      ? prisma.user.findFirst({
-          where: {
-            doctorId,
-            role: 'DOCTOR',
-            status: 'ACTIVE',
-            doctor: { is: { active: true } },
-          },
-          include: { doctor: true },
-        })
-      : prisma.user.findFirst({
-          where: { email: email!.toLowerCase(), status: 'ACTIVE' },
-          include: { doctor: true },
-        })));
+    const user = await prismaAdmin.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        SELECT
+          set_config('app.role', '', true),
+          set_config('app.doctor_id', '', true),
+          set_config('app.user_id', '', true),
+          set_config('app.scope', 'auth', true),
+          set_config('app.auth_email', ${email?.toLowerCase() || ''}, true),
+          set_config('app.auth_doctor_id', ${doctorId || ''}, true)
+      `;
+      return doctorId
+        ? tx.user.findFirst({
+            where: {
+              doctorId,
+              role: 'DOCTOR',
+              status: 'ACTIVE',
+              doctor: { is: { active: true } },
+            },
+            include: { doctor: true },
+          })
+        : tx.user.findFirst({
+            where: { email: email!.toLowerCase(), status: 'ACTIVE' },
+            include: { doctor: true },
+          });
+    });
 
     const ok = await bcrypt.compare(password, user?.passwordHash || DUMMY_HASH);
     if (!user || !ok) {
@@ -99,12 +130,16 @@ router.post('/login', async (req, res) => {
     await saveSession(req, sessionUser);
     clearLoginFailures(key);
 
-    await runWithAuthScope(() => writeAudit({
-      userId: user.id,
-      action: 'LOGIN',
-      entityType: 'user',
-      entityId: user.id,
-    }));
+    await runWithAuthScope(
+      () =>
+        writeAudit({
+          userId: user.id,
+          action: 'LOGIN',
+          entityType: 'user',
+          entityId: user.id,
+        }),
+      { email: user.email, doctorId: user.doctorId || undefined },
+    );
 
     return res.json({ user: sessionUser });
   } catch (e) {
@@ -128,7 +163,7 @@ router.post('/logout', requireAuth, async (req, res) => {
     console.error(e);
   }
   req.session.destroy(() => {
-    res.clearCookie('dermaops.sid');
+    clearSessionCookie(res);
     res.json({ ok: true });
   });
 });

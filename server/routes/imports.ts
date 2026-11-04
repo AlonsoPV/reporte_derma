@@ -2,7 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { prisma } from '../db';
 import { requireAuth, requireRole, getUser } from '../middleware/auth';
 import { EXPECTED_EXCEL_COLUMNS } from '../../shared/constants';
@@ -16,6 +16,7 @@ const router = Router();
 
 const uploadDir = path.join(process.cwd(), 'uploads', 'imports');
 fs.mkdirSync(uploadDir, { recursive: true });
+const MAX_IMPORT_ROWS = 5000;
 
 const upload = multer({
   dest: uploadDir,
@@ -24,10 +25,31 @@ const upload = multer({
     const ok =
       file.mimetype.includes('sheet') ||
       file.mimetype.includes('excel') ||
-      file.originalname.match(/\.(xlsx|xls)$/i);
+      file.originalname.match(/\.xlsx$/i);
     cb(null, !!ok);
   },
 });
+
+function unlinkQuiet(filePath?: string | null) {
+  if (!filePath) return;
+  try {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  } catch {
+    /* ignore */
+  }
+}
+
+function cellValue(cell: ExcelJS.Cell): unknown {
+  const value = cell.value;
+  if (value == null) return '';
+  if (value instanceof Date) return value;
+  if (typeof value === 'object' && 'result' in value) return (value as { result: unknown }).result ?? '';
+  if (typeof value === 'object' && 'text' in value) return (value as { text: string }).text;
+  if (typeof value === 'object' && 'richText' in value) {
+    return ((value as { richText: Array<{ text: string }> }).richText || []).map((p) => p.text).join('');
+  }
+  return value;
+}
 
 type ParsedRow = {
   rowNumber: number;
@@ -77,18 +99,47 @@ function mapOperationalFromSource(sourceStatus: string): OperationalStatus {
 }
 
 async function parseWorkbook(filePath: string) {
-  const buffer = fs.readFileSync(filePath);
-  const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
-  const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' });
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(filePath);
+  const sheet = workbook.worksheets[0];
+  if (!sheet) {
+    return {
+      missingColumns: [...EXPECTED_EXCEL_COLUMNS],
+      rowsDetected: 0,
+      newCount: 0,
+      existingCount: 0,
+      updatedCount: 0,
+      cancelledCount: 0,
+      errorCount: 1,
+      doctorsDetected: [] as string[],
+      unmappedDoctors: [] as string[],
+      dateCounts: {} as Record<string, number>,
+      errors: [{ row: 0, message: 'El archivo no tiene hojas' }],
+      rows: [] as ParsedRow[],
+    };
+  }
 
-  const headers = rawRows.length
-    ? Object.keys(rawRows[0])
-    : ((XLSX.utils.sheet_to_json(sheet, { header: 1 })[0] as string[]) || []);
+  const headerRow = sheet.getRow(1);
+  const headers: string[] = [];
+  headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+    headers[colNumber - 1] = String(cellValue(cell) ?? '')
+      .trim();
+  });
+
+  const rawRows: Record<string, unknown>[] = [];
+  sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    if (rowNumber === 1) return;
+    if (rawRows.length >= MAX_IMPORT_ROWS) return;
+    const obj: Record<string, unknown> = {};
+    headers.forEach((header, index) => {
+      if (!header) return;
+      obj[header] = cellValue(row.getCell(index + 1));
+    });
+    rawRows.push(obj);
+  });
 
   const missingColumns = EXPECTED_EXCEL_COLUMNS.filter(
-    (col) => !headers.some((h) => h.trim().toLowerCase() === col.toLowerCase())
+    (col) => !headers.some((h) => (h || '').trim().toLowerCase() === col.toLowerCase()),
   );
 
   const mappings = await prisma.doctorNameMapping.findMany();
@@ -217,12 +268,14 @@ async function parseWorkbook(filePath: string) {
 }
 
 router.post('/preview', requireAuth, requireRole('ADMIN'), upload.single('file'), async (req, res) => {
+  const tempPath = req.file?.path;
   try {
     if (!req.file) return res.status(400).json({ error: 'Archivo requerido' });
     const user = getUser(req);
     const summary = await parseWorkbook(req.file.path);
 
     if (summary.missingColumns.length > 0) {
+      unlinkQuiet(tempPath);
       return res.status(400).json({
         error: 'El Excel no tiene las columnas esperadas',
         missingColumns: summary.missingColumns,
@@ -231,7 +284,7 @@ router.post('/preview', requireAuth, requireRole('ADMIN'), upload.single('file')
 
     const batch = await prisma.importBatch.create({
       data: {
-        filename: req.file.originalname,
+        filename: path.basename(req.file.originalname).slice(0, 200),
         uploadedById: user.id,
         rowsDetected: summary.rowsDetected,
         createdCount: summary.newCount,
@@ -241,7 +294,6 @@ router.post('/preview', requireAuth, requireRole('ADMIN'), upload.single('file')
         doctorsDetected: summary.doctorsDetected,
         errors: summary.errors,
         previewData: {
-          filePath: req.file.path,
           unmappedDoctors: summary.unmappedDoctors,
           rows: summary.rows.map((r) => ({
             ...r,
@@ -252,6 +304,8 @@ router.post('/preview', requireAuth, requireRole('ADMIN'), upload.single('file')
         confirmed: false,
       },
     });
+
+    unlinkQuiet(tempPath);
 
     res.json({
       importId: batch.id,
@@ -271,6 +325,7 @@ router.post('/preview', requireAuth, requireRole('ADMIN'), upload.single('file')
       },
     });
   } catch (e) {
+    unlinkQuiet(tempPath);
     console.error(e);
     res.status(500).json({ error: 'Error al procesar el Excel' });
   }
@@ -284,7 +339,6 @@ router.post('/confirm/:id', requireAuth, requireRole('ADMIN'), async (req, res) 
     if (batch.confirmed) return res.status(400).json({ error: 'Esta importación ya fue confirmada' });
 
     const preview = batch.previewData as {
-      filePath: string;
       rows: Array<{
         externalAppointmentId: string;
         appointmentDate: string | null;
@@ -305,7 +359,10 @@ router.post('/confirm/:id', requireAuth, requireRole('ADMIN'), async (req, res) 
         doctorId: string | null;
         error?: string;
       }>;
-    };
+    } | null;
+    if (!preview?.rows?.length) {
+      return res.status(400).json({ error: 'Vista previa inválida o vacía' });
+    }
 
     let createdCount = 0;
     let updatedCount = 0;
@@ -432,15 +489,6 @@ router.post('/confirm/:id', requireAuth, requireRole('ADMIN'), async (req, res) 
       newValue: { createdCount, updatedCount, cancelledCount, errorCount: applyErrors.length },
     });
 
-    // cleanup temp file
-    if (preview.filePath && fs.existsSync(preview.filePath)) {
-      try {
-        fs.unlinkSync(preview.filePath);
-      } catch {
-        /* ignore */
-      }
-    }
-
     res.json({ import: confirmed });
   } catch (e) {
     console.error(e);
@@ -453,15 +501,6 @@ router.post('/cancel/:id', requireAuth, requireRole('ADMIN'), async (req, res) =
     const batch = await prisma.importBatch.findUnique({ where: { id: req.params.id } });
     if (!batch) return res.status(404).json({ error: 'Importación no encontrada' });
     if (batch.confirmed) return res.status(400).json({ error: 'Ya confirmada' });
-
-    const preview = batch.previewData as { filePath?: string } | null;
-    if (preview?.filePath && fs.existsSync(preview.filePath)) {
-      try {
-        fs.unlinkSync(preview.filePath);
-      } catch {
-        /* ignore */
-      }
-    }
 
     await prisma.importBatch.delete({ where: { id: batch.id } });
     res.json({ ok: true });

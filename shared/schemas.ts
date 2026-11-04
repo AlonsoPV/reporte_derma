@@ -72,10 +72,22 @@ export const reopenDaySchema = z.object({
   reason: z.string().min(3, 'Motivo obligatorio'),
 });
 
+export const passwordSchema = z
+  .string()
+  .min(12, 'La contraseña debe tener al menos 12 caracteres')
+  .max(128, 'Contraseña demasiado larga')
+  .regex(/[a-z]/, 'Incluye al menos una minúscula')
+  .regex(/[A-Z]/, 'Incluye al menos una mayúscula')
+  .regex(/[0-9]/, 'Incluye al menos un número')
+  .regex(/[^A-Za-z0-9]/, 'Incluye al menos un símbolo');
+
+/** Demo local only — never use in production clinics. */
+export const DEMO_PASSWORD = 'DermaOps-Demo123!';
+
 export const userSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
-  password: z.string().min(6).optional(),
+  password: passwordSchema.optional(),
   role: z.enum(['ADMIN', 'DOCTOR', 'RECEPTION', 'SUPERVISOR', 'ACCOUNTING']),
   doctorId: z.string().nullable().optional(),
   status: z.enum(['ACTIVE', 'INACTIVE']).optional(),

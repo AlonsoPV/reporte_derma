@@ -62,7 +62,7 @@ Roles preparados para crecer: `RECEPTION`, `SUPERVISOR`, `ACCOUNTING`.
 
 ## Credenciales demo
 
-Contraseña para todos: `Demo123!`
+Contraseña para todos (solo demo local): `DermaOps-Demo123!`
 
 | Usuario | Correo | Rol |
 |---------|--------|-----|

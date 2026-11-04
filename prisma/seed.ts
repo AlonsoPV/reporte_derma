@@ -1,7 +1,14 @@
+import 'dotenv/config';
 import { PrismaClient, PaymentMethod, OperationalStatus } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { DEMO_PASSWORD } from '../shared/schemas';
 
 const prisma = new PrismaClient();
+
+if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_SEED !== 'true') {
+  console.error('Seed demo bloqueado en producción. Define ALLOW_DEMO_SEED=true solo si es intencional.');
+  process.exit(1);
+}
 
 function dateOnly(offsetDays = 0): Date {
   const now = new Date();
@@ -28,7 +35,7 @@ async function main() {
   await prisma.user.deleteMany();
   await prisma.doctor.deleteMany();
 
-  const passwordHash = await bcrypt.hash('Demo123!', 10);
+  const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 12);
 
   const doctorBerenice = await prisma.doctor.create({
     data: { name: 'Berenice Gomez Tagle Boix' },
@@ -341,11 +348,11 @@ async function main() {
   });
 
   console.log('Seed complete.');
-  console.log('Admin: admin@clinicademo.local / Demo123!');
-  console.log('Recepción: recepcion@clinicademo.local / Demo123!');
-  console.log('Doctor: berenice@clinicademo.local / Demo123!');
-  console.log('Doctor: carlos@clinicademo.local / Demo123!');
-  console.log('Doctor: ana@clinicademo.local / Demo123!');
+  console.log(`Admin: admin@clinicademo.local / ${DEMO_PASSWORD}`);
+  console.log(`Recepción: recepcion@clinicademo.local / ${DEMO_PASSWORD}`);
+  console.log(`Doctor: berenice@clinicademo.local / ${DEMO_PASSWORD}`);
+  console.log(`Doctor: carlos@clinicademo.local / ${DEMO_PASSWORD}`);
+  console.log(`Doctor: ana@clinicademo.local / ${DEMO_PASSWORD}`);
 }
 
 main()

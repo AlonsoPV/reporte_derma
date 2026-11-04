@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { PrismaClient } from '@prisma/client';
 import { canMutateAttendance } from '../../shared/constants';
+import { DEMO_PASSWORD } from '../../shared/schemas';
 
 const base = 'http://127.0.0.1:5050';
 const prisma = new PrismaClient();
@@ -22,7 +23,7 @@ function cookieFrom(res: Response) {
 async function login(body: Record<string, string>) {
   const res = await fetch(`${base}/api/auth/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Origin: 'http://127.0.0.1:5173' },
     body: JSON.stringify(body),
   });
   const data = await res.json();
@@ -35,6 +36,7 @@ async function api(cookie: string, method: string, path: string, body?: unknown)
     method,
     headers: {
       Cookie: cookie,
+      Origin: 'http://127.0.0.1:5173',
       ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -82,9 +84,9 @@ await prisma.appointment.deleteMany({
   where: { doctorId: carlos.id, appointmentDate: dateUtc, patientName: { startsWith: 'VAL-' } },
 });
 
-const admin = await login({ email: 'admin@clinicademo.local', password: 'Demo123!' });
-const doctor = await login({ doctorId: carlos.id, password: 'Demo123!' });
-const reception = await login({ email: 'recepcion@clinicademo.local', password: 'Demo123!' });
+const admin = await login({ email: 'admin@clinicademo.local', password: DEMO_PASSWORD });
+const doctor = await login({ doctorId: carlos.id, password: DEMO_PASSWORD });
+const reception = await login({ email: 'recepcion@clinicademo.local', password: DEMO_PASSWORD });
 
 const walkIn = await api(doctor.cookie, 'POST', '/api/walk-in', {
   patientName: 'VAL-Walkin',

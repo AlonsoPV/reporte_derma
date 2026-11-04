@@ -15,19 +15,28 @@ import importRoutes from './routes/imports';
 import closureRoutes from './routes/closures';
 import reportRoutes from './routes/reports';
 import adminRoutes from './routes/admin';
-import { rejectWritesIfReadOnly, rlsContextMiddleware } from './middleware/auth';
+import {
+  apiAbuseGuard,
+  cookieOptions,
+  csrfOriginCheck,
+  rejectWritesIfReadOnly,
+  rlsContextMiddleware,
+} from './middleware/auth';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
 const isProd = process.env.NODE_ENV === 'production';
+const isDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
 
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
 app.use(
   cors({
-    origin: isProd ? false : ['http://localhost:5173', 'http://127.0.0.1:5173'],
+    origin: isProd
+      ? (process.env.APP_ORIGIN || '').split(',').map((s) => s.trim()).filter(Boolean)
+      : ['http://localhost:5173', 'http://127.0.0.1:5173'],
     credentials: true,
-  })
+  }),
 );
 app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -38,6 +47,9 @@ app.use((_req, res, next) => {
     'Content-Security-Policy',
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
   );
+  if (isProd) {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
   next();
 });
 app.use(express.json({ limit: '2mb' }));
@@ -47,6 +59,14 @@ app.use('/api', (_req, res, next) => {
   res.set('Pragma', 'no-cache');
   next();
 });
+app.use('/api', apiAbuseGuard);
+app.use('/api', csrfOriginCheck);
+
+const sessionSecret = process.env.SESSION_SECRET?.trim() || '';
+if (!isDev && sessionSecret.length < 32) {
+  console.error('SESSION_SECRET de al menos 32 caracteres es obligatorio fuera de development');
+  process.exit(1);
+}
 
 const PgSession = connectPgSimple(session as typeof import('express-session'));
 app.use(
@@ -57,16 +77,11 @@ app.use(
       createTableIfMissing: true,
     }),
     name: 'dermaops.sid',
-    secret: process.env.SESSION_SECRET || (isProd ? '' : 'dev-secret-change-me'),
+    secret: sessionSecret || 'dev-secret-change-me',
     resave: false,
     saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: 'lax',
-      maxAge: 1000 * 60 * 60 * 12,
-    },
-  })
+    cookie: cookieOptions(),
+  }),
 );
 
 app.get('/api/health', (_req, res) => {
@@ -103,9 +118,8 @@ async function start() {
     console.error('DATABASE_URL is required');
     process.exit(1);
   }
-  if (isProd && (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32)) {
-    console.error('SESSION_SECRET de al menos 32 caracteres es obligatorio en producción');
-    process.exit(1);
+  if (isProd && (!process.env.APP_ORIGIN || !process.env.APP_ORIGIN.trim())) {
+    console.warn('APP_ORIGIN no definido: CORS estricto y checks de origen pueden bloquear el front');
   }
   await prismaAdmin.$connect();
   await ensureMultiAttendances();
@@ -113,7 +127,9 @@ async function start() {
   const rls = await connectAppDatabase();
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server listening on http://0.0.0.0:${PORT}`);
-    console.log(`RLS ${rls.usingAppRole ? 'activa (rol dermaops_app)' : `en políticas; conexión ${rls.adminRole}`}`);
+    console.log(
+      `RLS ${rls.usingAppRole ? 'activa (rol dermaops_app)' : `en políticas; conexión ${rls.adminRole}`}`,
+    );
   });
 }
 

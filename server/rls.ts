@@ -7,48 +7,67 @@ export type RlsContext = {
   doctorId: string;
   userId: string;
   scope: string;
+  authEmail: string;
+  authDoctorId: string;
   inTx?: boolean;
 };
 
-const rlsStore = new AsyncLocalStorage<RlsContext>();
+export const rlsStore = new AsyncLocalStorage<RlsContext>();
 
 export function rlsContext(): RlsContext | undefined {
   return rlsStore.getStore();
 }
 
 function emptyContext(): RlsContext {
-  return { role: '', doctorId: '', userId: '', scope: '' };
+  return { role: '', doctorId: '', userId: '', scope: '', authEmail: '', authDoctorId: '' };
 }
 
-export function enterRlsContext(ctx: RlsContext) {
+export function runRlsContext<T>(ctx: RlsContext, fn: () => T): T {
+  return rlsStore.run(ctx, fn);
+}
+
+/** Bind RLS context for the rest of the Express request (async-safe). */
+export function bindRlsContext(ctx: RlsContext) {
   rlsStore.enterWith(ctx);
 }
 
 export async function runWithRls<T>(ctx: RlsContext, fn: () => T | Promise<T>): Promise<T> {
-  const previous = rlsStore.getStore();
-  rlsStore.enterWith(ctx);
-  try {
-    return await fn();
-  } finally {
-    rlsStore.enterWith(previous ?? emptyContext());
-  }
+  return rlsStore.run(ctx, fn);
 }
 
 export function runAsAdmin<T>(fn: () => T | Promise<T>): Promise<T> {
-  return runWithRls({ role: 'ADMIN', doctorId: '', userId: 'system', scope: 'app' }, fn);
+  return runWithRls(
+    { role: 'ADMIN', doctorId: '', userId: 'system', scope: 'app', authEmail: '', authDoctorId: '' },
+    fn,
+  );
 }
 
-export function runWithAuthScope<T>(fn: () => T | Promise<T>): Promise<T> {
-  return runWithRls({ role: '', doctorId: '', userId: '', scope: 'auth' }, fn);
+export function runWithAuthScope<T>(
+  fn: () => T | Promise<T>,
+  opts?: { email?: string; doctorId?: string },
+): Promise<T> {
+  return runWithRls(
+    {
+      role: '',
+      doctorId: '',
+      userId: '',
+      scope: 'auth',
+      authEmail: (opts?.email || '').toLowerCase(),
+      authDoctorId: opts?.doctorId || '',
+    },
+    fn,
+  );
 }
 
 export function rlsContextFromUser(user?: { id: string; role: string; doctorId?: string | null } | null): RlsContext {
-  if (!user) return { role: '', doctorId: '', userId: '', scope: '' };
+  if (!user) return emptyContext();
   return {
     role: user.role,
     doctorId: user.doctorId ?? '',
     userId: user.id,
     scope: 'app',
+    authEmail: '',
+    authDoctorId: '',
   };
 }
 
@@ -56,14 +75,17 @@ let rlsGate = Promise.resolve();
 
 function rlsQueue<T>(job: () => Promise<T>) {
   const run = rlsGate.then(job, job);
-  rlsGate = run.then(() => undefined, () => undefined);
+  rlsGate = run.then(
+    () => undefined,
+    () => undefined,
+  );
   return run;
 }
 
 async function applyRlsConfig(
   executor: { $executeRaw: PrismaClient['$executeRaw'] },
   ctx: RlsContext,
-  local = true,
+  local: boolean,
 ) {
   if (local) {
     await executor.$executeRaw`
@@ -71,7 +93,9 @@ async function applyRlsConfig(
         set_config('app.role', ${ctx.role}, true),
         set_config('app.doctor_id', ${ctx.doctorId}, true),
         set_config('app.user_id', ${ctx.userId}, true),
-        set_config('app.scope', ${ctx.scope}, true)
+        set_config('app.scope', ${ctx.scope}, true),
+        set_config('app.auth_email', ${ctx.authEmail}, true),
+        set_config('app.auth_doctor_id', ${ctx.authDoctorId}, true)
     `;
     return;
   }
@@ -80,50 +104,46 @@ async function applyRlsConfig(
       set_config('app.role', ${ctx.role}, false),
       set_config('app.doctor_id', ${ctx.doctorId}, false),
       set_config('app.user_id', ${ctx.userId}, false),
-      set_config('app.scope', ${ctx.scope}, false)
+      set_config('app.scope', ${ctx.scope}, false),
+      set_config('app.auth_email', ${ctx.authEmail}, false),
+      set_config('app.auth_doctor_id', ${ctx.authDoctorId}, false)
   `;
 }
 
 export function withRlsExtension(client: PrismaClient) {
-  return client.$extends({
+  // Assign before use so set_config runs on the same extended client/engine as queries.
+  const extended = client.$extends({
     query: {
       async $allOperations({ args, query, operation }) {
         if (String(operation).includes('Raw')) return query(args);
         const ctx = rlsStore.getStore() ?? emptyContext();
         if (ctx.inTx) return query(args);
-        const [, result] = await client.$transaction([
-          client.$executeRaw`
-            SELECT
-              set_config('app.role', ${ctx.role}, true),
-              set_config('app.doctor_id', ${ctx.doctorId}, true),
-              set_config('app.user_id', ${ctx.userId}, true),
-              set_config('app.scope', ${ctx.scope}, true)
-          `,
-          query(args),
-        ]);
-        return result;
+        return rlsQueue(async () => {
+          await applyRlsConfig(extended as unknown as PrismaClient, ctx, false);
+          return query(args);
+        });
       },
     },
   });
+  return extended;
 }
 
 export async function withRlsTransaction<T>(
   database: { $transaction: (fn: (tx: any) => Promise<T>) => Promise<T> },
   fn: (tx: any) => Promise<T>,
 ) {
-  const ctx = rlsStore.getStore();
-  const run = () => database.$transaction(async (tx) => {
-    if (ctx && typeof tx.$executeRaw === 'function') {
-      await applyRlsConfig(tx, ctx, true);
-      ctx.inTx = true;
-    }
-    try {
-      return await fn(tx);
-    } finally {
-      if (ctx) ctx.inTx = false;
-    }
-  });
-  return ctx?.inTx ? run() : rlsQueue(run);
+  const ctx = rlsStore.getStore() ?? emptyContext();
+  if (ctx.inTx) {
+    return database.$transaction(async (tx) => fn(tx));
+  }
+  return rlsQueue(() =>
+    database.$transaction(async (tx) => {
+      if (typeof tx.$executeRaw === 'function') {
+        await applyRlsConfig(tx, ctx, true);
+      }
+      return rlsStore.run({ ...ctx, inTx: true }, () => fn(tx));
+    }),
+  );
 }
 
 function sqlLiteral(value: string) {
@@ -157,6 +177,12 @@ AS $$ SELECT coalesce(nullif(current_setting('app.user_id', true), ''), '') $$`,
   `CREATE OR REPLACE FUNCTION app_scope() RETURNS text
 LANGUAGE sql STABLE SET search_path = pg_catalog, public
 AS $$ SELECT coalesce(nullif(current_setting('app.scope', true), ''), '') $$`,
+  `CREATE OR REPLACE FUNCTION app_auth_email() RETURNS text
+LANGUAGE sql STABLE SET search_path = pg_catalog, public
+AS $$ SELECT coalesce(nullif(current_setting('app.auth_email', true), ''), '') $$`,
+  `CREATE OR REPLACE FUNCTION app_auth_doctor_id() RETURNS text
+LANGUAGE sql STABLE SET search_path = pg_catalog, public
+AS $$ SELECT coalesce(nullif(current_setting('app.auth_doctor_id', true), ''), '') $$`,
   `CREATE OR REPLACE FUNCTION app_is_admin() RETURNS boolean
 LANGUAGE sql STABLE SET search_path = pg_catalog, public
 AS $$ SELECT app_role() = 'ADMIN' $$`,
@@ -173,7 +199,6 @@ AS $$
       OR (app_role() = 'DOCTOR' AND doctor_id IS NOT NULL AND doctor_id = app_doctor_id() AND app_doctor_id() <> '')
 $$`,
 ];
-
 const POLICY_TABLES = [
   'users',
   'doctors',
@@ -187,15 +212,26 @@ const POLICY_TABLES = [
   'audit_logs',
 ] as const;
 
-function policyStatements() {
+export function policyStatements() {
   const statements: string[] = [];
   for (const table of POLICY_TABLES) {
     statements.push(`ALTER TABLE "${table}" ENABLE ROW LEVEL SECURITY`);
     statements.push(`ALTER TABLE "${table}" FORCE ROW LEVEL SECURITY`);
   }
   statements.push(
+    'ALTER TABLE "session" ENABLE ROW LEVEL SECURITY',
     'DROP POLICY IF EXISTS users_select ON "users"',
-    `CREATE POLICY users_select ON "users" FOR SELECT USING (app_is_admin() OR id = app_user_id() OR app_scope() = 'auth')`,
+    `CREATE POLICY users_select ON "users" FOR SELECT USING (
+      app_is_admin()
+      OR id = app_user_id()
+      OR (
+        app_scope() = 'auth'
+        AND (
+          (app_auth_email() <> '' AND lower(email) = app_auth_email())
+          OR (app_auth_doctor_id() <> '' AND "doctorId" IS NOT NULL AND "doctorId" = app_auth_doctor_id())
+        )
+      )
+    )`,
     'DROP POLICY IF EXISTS users_write ON "users"',
     'CREATE POLICY users_write ON "users" FOR ALL USING (app_is_admin()) WITH CHECK (app_is_admin())',
     'DROP POLICY IF EXISTS doctors_select ON "doctors"',
@@ -265,7 +301,9 @@ export async function ensureAppDatabaseRole(admin: PrismaClient, password: strin
   await admin.$executeRawUnsafe('GRANT USAGE ON SCHEMA public TO dermaops_app');
   await admin.$executeRawUnsafe('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO dermaops_app');
   await admin.$executeRawUnsafe('GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO dermaops_app');
-  await admin.$executeRawUnsafe('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO dermaops_app');
+  await admin.$executeRawUnsafe(
+    'ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO dermaops_app',
+  );
   await admin.$executeRawUnsafe(`
     DO $do$
     BEGIN
@@ -282,6 +320,8 @@ export async function ensureRowLevelSecurity(admin: PrismaClient) {
   for (const sql of RLS_FUNCTIONS) {
     await admin.$executeRawUnsafe(sql);
   }
+  // Drop helper that incorrectly referenced users columns at function level if present
+  await admin.$executeRawUnsafe('DROP FUNCTION IF EXISTS app_auth_user_match()');
   for (const sql of policyStatements()) {
     await admin.$executeRawUnsafe(sql);
   }
@@ -289,6 +329,8 @@ export async function ensureRowLevelSecurity(admin: PrismaClient) {
   await admin.$executeRawUnsafe('GRANT EXECUTE ON FUNCTION app_doctor_id() TO PUBLIC');
   await admin.$executeRawUnsafe('GRANT EXECUTE ON FUNCTION app_user_id() TO PUBLIC');
   await admin.$executeRawUnsafe('GRANT EXECUTE ON FUNCTION app_scope() TO PUBLIC');
+  await admin.$executeRawUnsafe('GRANT EXECUTE ON FUNCTION app_auth_email() TO PUBLIC');
+  await admin.$executeRawUnsafe('GRANT EXECUTE ON FUNCTION app_auth_doctor_id() TO PUBLIC');
   await admin.$executeRawUnsafe('GRANT EXECUTE ON FUNCTION app_is_admin() TO PUBLIC');
   await admin.$executeRawUnsafe('GRANT EXECUTE ON FUNCTION app_is_clinic_wide() TO PUBLIC');
   await admin.$executeRawUnsafe('GRANT EXECUTE ON FUNCTION app_is_writer() TO PUBLIC');
