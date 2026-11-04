@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { RECIPE_BRANDS, categoriesForBrand, findRecipeProduct, searchRecipeProducts, type RecipeProduct } from '@shared/recipes';
+import { getRecipeProductPref, saveRecipeProductPref } from '../lib/recipeProductPrefs';
 import { downloadRecipePdf, recipePdfFile, shareRecipeFile, shareRecipePdf } from '../lib/recipePdf';
 
 export type RecipeLine = {
@@ -160,7 +161,10 @@ export function RecipeEditor({
   };
 
   const updateLine = (id: string, patch: Partial<Pick<RecipeLine, 'usage' | 'recommendation'>>) => {
-    onChange(lines.map((line) => (line.id === id ? { ...line, ...patch } : line)));
+    const next = lines.map((line) => (line.id === id ? { ...line, ...patch } : line));
+    onChange(next);
+    const updated = next.find((line) => line.id === id);
+    if (updated) saveRecipeProductPref(updated.productName, updated.usage, updated.recommendation);
   };
 
   const focusSearch = () => {
@@ -172,14 +176,15 @@ export function RecipeEditor({
       setError('Ese producto ya está en la receta.');
       return;
     }
+    const saved = getRecipeProductPref(product.name);
     onChange([
       ...lines,
       {
         id: crypto.randomUUID(),
         category: product.category ?? '',
         productName: product.name,
-        usage: product.usage,
-        recommendation: product.recommendation,
+        usage: saved?.usage || product.usage,
+        recommendation: saved?.recommendation || product.recommendation,
       },
     ]);
     setProductName('');
@@ -204,7 +209,7 @@ export function RecipeEditor({
     <div className="space-y-3 rounded-2xl border border-slate-200 p-3">
       <div>
         <div className="text-sm font-semibold text-ink">Receta</div>
-        <p className="text-xs text-slate-500">Opcional. Escribe parte del nombre y elige; se agrega al tocarlo. Uso y recomendación se ajustan después.</p>
+        <p className="text-xs text-slate-500">Opcional. Al ajustar uso y recomendación se recuerdan para la próxima vez que elijas el mismo producto.</p>
       </div>
       <div className={`grid gap-3 ${brandCategories.length ? 'sm:grid-cols-2' : ''}`}>
         <div>
